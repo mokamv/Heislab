@@ -88,7 +88,7 @@ impl ElevatorState {
 
 fn main() -> std::io::Result<()> {
     let elev_num_floors = 4;
-    let elevator = e::Elevator::init("localhost:10000", elev_num_floors)?;
+    let elevator = e::Elevator::init("localhost:15657", elev_num_floors)?;
     println!("Elevator started:\n{:#?}", elevator);
 
     let poll_period = Duration::from_millis(25);
