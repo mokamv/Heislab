@@ -4,3 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+driver-rust = { git = "https://github.com/TTK4145/driver-rust", tag = "v0.X.0" }

@@ -55,6 +55,6 @@ fn udp() -> io::Result<()> {
 
         // Print the received data and source address
         println!("Received {} bytes from {:?}", len, src);
-        println!("Data: {:?}", &buf[..len]);
+        println!("Data: {:?}", String::from_utf8_lossy(&buf[..len]));
     }
 }
