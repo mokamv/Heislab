@@ -4,10 +4,11 @@ use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
 use std::net::UdpSocket;
+use network_rust::udpnet;
 
 fn main() {
-    //tcp();
-    udp();
+    tcp();
+    
 }
 
 fn tcp() -> io::Result<()> {
@@ -35,7 +36,7 @@ fn tcp() -> io::Result<()> {
         to_send.push('\0');
 
         stream.write(&to_send.as_bytes()).expect("An error occured");
-        sleep(Duration::new(0, 500000));
+        sleep(Duration::new(0, 500000)); // Sleep for 0.5 seconds
         stream.read(&mut read_buffer).expect("An error occured on read");
         println!("{}", String::from_utf8_lossy(&read_buffer));
     };
