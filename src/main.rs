@@ -7,6 +7,9 @@ use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
 
+mod queue;
+use queue::queue::Queue;
+
 struct ElevatorState {
     dirn: u8,
     target: u8,
