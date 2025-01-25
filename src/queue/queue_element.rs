@@ -5,13 +5,12 @@ struct Queueelement {
     previous: Option<Box<Queueelement>>, // Pointer to the previous element in the queue
 }
 
-enum Floor {
-    First,
-    Second,
-    Third,
-    Fourth,
-    Between
+enum Position {
+    Between,
+    Floor(u8)
 }
+
+// Impl. match
 
 enum Direction {
     Up,
