@@ -87,13 +87,13 @@ impl ElevatorState {
             // Check to know if we still need to continue or not.
             if self.current_service.is_final_floor(current_floor) {
                 // When finished, we reset current service, next call will be honouring the rest
-                self.current_service.reset();
-
                 self.elevator.call_button_light(
                     current_floor,
                     self.current_service.request.as_ref().unwrap().light_id(),
                     false
                 );
+                
+                self.current_service.reset();
 
                 // We still need to remove potential hall light that'll be serviced right after.
                 if let Some(next_request) = self.main_queue.peek() {
