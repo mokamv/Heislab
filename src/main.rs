@@ -73,6 +73,8 @@ impl Process {
     fn launch_in_new_terminal(command: String) {
         let mut cmd = Command::new("gnome-terminal");
         cmd.arg("--");
+        cmd.arg("bash");
+        cmd.arg("-c");
         cmd.arg(command);
 
         match cmd
