@@ -76,6 +76,7 @@ impl ElevatorState {
     }
 
     pub fn handle_floor_sensor(&mut self, current_floor: u8) {
+        self.elevator.floor_indicator(current_floor);
         // Check if elevator needs to stop at this floor.
         if self.current_service.does_stop(current_floor) {
             // First stop the elevator.
