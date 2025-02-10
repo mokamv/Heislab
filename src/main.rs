@@ -35,6 +35,24 @@ impl Process {
         udp
     }
 
+    fn is_wsl() -> bool {
+        let mut cmd = Command::new("cmd.exe");
+        cmd.arg("/c").arg("exit");
+
+        match cmd
+            .status() {
+            Err(_) => {
+                false
+            },
+            Ok(status) => {
+                match status.code() {
+                    None => false,
+                    Some(code) => code == 0
+                }
+            }
+        }
+    }
+
     fn launch_in_new_wsl_terminal(command: String) {
         let mut cmd = Command::new("cmd.exe");
         cmd.arg("/c");
@@ -50,8 +68,26 @@ impl Process {
         };
     }
 
+    fn launch_in_new_terminal(command: String) {
+        let mut cmd = Command::new("gnome-terminal");
+        cmd.arg("--");
+        cmd.arg(command);
+
+        match cmd
+            .spawn() {
+            Err(why) => panic!("couldn't spawn backup: {}", why),
+            Ok(_) => {}
+        };
+    }
+
     fn launch_child(current_count: u32) {
-        Self::launch_in_new_wsl_terminal(format!("{:?} --backup {}", current_exe().unwrap(), current_count))
+        #[cfg(target_os = "linux")] {
+            if Self::is_wsl() {
+                Self::launch_in_new_wsl_terminal(format!("{:?} --backup {}", current_exe().unwrap(), current_count));
+            } else {
+                Self::launch_in_new_terminal(format!("{:?} --backup {}", current_exe().unwrap(), current_count));
+            }
+        }
     }
 
     fn start_backup(current_count: u32) {
