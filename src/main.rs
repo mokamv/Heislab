@@ -7,6 +7,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
+use std::mem::size_of;
 
 const COUNTER_PERIOD: Duration = Duration::from_millis(200);
 const ERROR_RATE: f64 = 0.05;
@@ -137,7 +138,6 @@ impl BackedUpCounter {
         Process::launch_child(*self.count.lock().unwrap());
         self.start_counting();
     }
-
     fn listen_to_master(current_count: u32) -> Self {
         let counter = BackedUpCounter { count: Arc::new(Mutex::new(current_count)) };
 
