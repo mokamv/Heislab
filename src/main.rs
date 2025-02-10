@@ -1,5 +1,6 @@
 use std::env;
 use std::env::current_exe;
+use std::fmt::format;
 use std::net::UdpSocket;
 use std::process::Command;
 use std::str::FromStr;
@@ -83,10 +84,14 @@ impl Process {
 
     fn launch_child(current_count: u32) {
         #[cfg(target_os = "linux")] {
+            let raw_path = format!("{:?}", current_exe().unwrap());
+            let mut path = raw_path.strip_prefix("\"").unwrap();
+            path = path.strip_suffix("\"").unwrap();
+
             if Self::is_wsl() {
                 Self::launch_in_new_wsl_terminal(format!("{:?} --backup {}", current_exe().unwrap(), current_count));
             } else {
-                Self::launch_in_new_terminal(format!("{:?} --backup {}", current_exe().unwrap(), current_count));
+                Self::launch_in_new_terminal(format!("{} --backup {}", path, current_count));
             }
         }
     }
