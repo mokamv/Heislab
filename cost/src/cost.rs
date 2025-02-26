@@ -4,15 +4,24 @@ use Heislab::src::single_elevator_controller
 //todo: 
 // change to not single elevator
 
-fun cost(message : Message) {
-
+fun cost(message: Message) {
     let mut weight = 0;
     let State:Elevator elevatorManageCall;
-    for n in ids{
+    let mut allreadyTaken;
+
+    for elevator in ids{
         let mut weightElevatorN = 0;
-        if weight > weightElevatorN:
-            elevatorManageCall = elevator n
+        wheight[i] = len(orders)/4
+        for order in n.orders
+            if message = order
+                allreadyTaken = true
+                brake
+            weight += Message.etasje - order.etasje
+        
+        if weight < weightElevatorN:
+            elevatorManageCall = elevator
     }
-    ElevatorState->queueN.add_call(massage[])
+    if !allreadyTaken:
+        ElevatorState->queueN.add_call(massage[])
     
 }

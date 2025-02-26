@@ -61,6 +61,8 @@ impl ElevatorState {
     }
 
     pub fn handle_call_button(&mut self, call: CallButton) {
+        //TODO: run the cost function?
+
         let request = match call.call {
             e::CAB => Request::Cab(call.floor),
             e::HALL_DOWN => Request::Hall(call.floor, e::DIRN_DOWN),
@@ -185,11 +187,11 @@ impl ElevatorState {
     }
 }
 
-struct CurrentService {
+<struct CurrentService {
     request: Option<Request>,
     state: State,
     serviceable_request: Vec<Request>
-}
+}>
 
 impl CurrentService {
     fn from(state: State) -> Self {
