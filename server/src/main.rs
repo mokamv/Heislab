@@ -6,18 +6,15 @@ use common::log::LogLevel;
 fn main() {
     let args: Vec<String> = args().collect();
     
-    if args.len() > 1 && args[1] == "--backup" {
-        ProcessPair::run_as_backup(
-            if args.len() > 2 {
-                u32::from_str(args[2].as_str()).unwrap_or(0)
+    if args.len() > 1 && args[1] == "--overview" {
+        ProcessPair::run_as_overview(LogLevel::DEBUG)
+    } else {
+        ProcessPair::run_as_program(
+            if args.len() > 1 {
+                u8::from_str(args[1].as_str()).unwrap_or_else(|e| { panic!("{}", e) })
             } else {
-                0
+                panic!("Need to provide an id between 0 and 255");
             }
         )
-    } else if args.len() > 1 && args[1] == "--main" {
-        ProcessPair::run_as_main()
-    } else {
-        //TODO FROM EXEC PARAM.
-        ProcessPair::run_as_overview(LogLevel::DEBUG)
     };
 }

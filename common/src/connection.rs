@@ -1,32 +1,42 @@
 pub mod connection_channel;
 
-pub mod connection_init;
+pub mod connection_init {
+    pub mod init_server;
+    pub mod init_client;
+}
+
 pub mod connection_handle;
+
+pub mod controller_state;
 
 pub mod client_pool {
     pub mod connection_error;
     pub mod client_pool;
+    
+    pub mod aggregator;
 }
 
 
 mod constants {
     use std::time::Duration;
 
-    pub const MESSAGE_POLLING_PERIOD: Duration = Duration::from_millis(20); // TODO FIND APPROPRIATE DELAY
-    pub const TCP_TIMEOUT: Duration = Duration::from_millis(2000);
-    pub const SEND_KEEP_ALIVE_PERIOD: Duration = Duration::from_millis(200);
+    pub const IDENTIFICATION_TIMEOUT: Duration = Duration::from_millis(500);
+
+    pub const MESSAGE_POLLING_PERIOD: Duration = Duration::from_millis(20);
+    pub const TCP_TIMEOUT: Duration = Duration::from_millis(500);
+    pub const SEND_KEEP_ALIVE_PERIOD: Duration = Duration::from_millis(100);
 
     pub const BIND_MAX_RETRY: u32 = 5;
     pub const BIND_RETRY_PERIOD: Duration = Duration::from_secs(2);
-    pub const UDP_BROADCAST_TIMEOUT: Duration = Duration::from_millis(5000);
-    pub const BROADCAST_PERIOD: Duration = Duration::from_millis(1000);
+    pub const UDP_BROADCAST_TIMEOUT: Duration = Duration::from_millis(500);
+    pub const BROADCAST_PERIOD: Duration = Duration::from_millis(100);
 
     pub mod ip_addresses {
         use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
         pub const SERVER_UDP_BIND_PORT: u16 = 9000;
         pub const SERVER_UDP_BIND_ADDR: SocketAddr =
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)), SERVER_UDP_BIND_PORT);
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_UDP_BIND_PORT);
         pub const SERVER_UDP_BROADCAST_PORT: u16 = 9001;
         pub const SERVER_UDP_BROADCAST_ADDR: SocketAddr =
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)), SERVER_UDP_BROADCAST_PORT);
@@ -34,8 +44,16 @@ mod constants {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), SERVER_UDP_BROADCAST_PORT);
 
         pub const SERVER_TCP_PORT: u16 = 10000;
-        pub const SERVER_TCP_ADDRESS: SocketAddr =
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT);
+        pub const SERVER_TCP_ADDRESSES: [SocketAddr; 8] = [
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 0),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 1),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 2),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 3),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 4),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 5),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 6),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), SERVER_TCP_PORT + 7),
+        ];
     }
 }
 

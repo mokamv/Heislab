@@ -173,6 +173,7 @@ pub mod log_server {
                 | ErrorKind::ConnectionReset
                 | ErrorKind::NotConnected
                 | ErrorKind::TimedOut
+                | ErrorKind::UnexpectedEof
                 | ErrorKind::HostUnreachable => LogServerError::ClientDisconnect,
 
                 other => panic!("Untreated error {}, please implement", other)
@@ -583,12 +584,16 @@ pub mod log_client {
         }
 
         pub fn clone(&self) -> Self {
+            self.clone_with_new_prefix(self.prefix.clone())
+        }
+
+        pub fn clone_with_new_prefix(&self, prefix: String) -> Self {
             let logger = match self.associated_logger.upgrade() {
                 None => panic!("Logger is dead"),
                 Some(logger) => logger
             };
 
-            Logger { logger_inst: logger }.get_sender(self.prefix.clone())
+            Logger { logger_inst: logger }.get_sender(prefix)
         }
     }
 }
