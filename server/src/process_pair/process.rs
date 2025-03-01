@@ -76,9 +76,9 @@ impl Process {
         let client_messages = self.client_pool.take_message_channel();
 
         while !*self.faulted.lock().unwrap() {
-            if self.backup_pairing.current_state() == ControllerState::Master {
-                select! {
-                    recv(client_messages) -> message => {
+            select! {
+                recv(client_messages) -> message => {
+                    if self.backup_pairing.current_state() == ControllerState::Master {
                         match message {
                             Ok(message) => {
                                 println!("{:?}", message)
