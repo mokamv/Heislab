@@ -19,20 +19,17 @@ pub(super) struct Process {
 }
 
 impl Process {
-    pub fn new(id: u8) -> Self {
+    pub fn new(id: u8, client_pool_size: usize) -> Self {
         let faulted = Arc::new(Mutex::new(false));
         let mut logger = Logger::init(&faulted);
 
-        //TODO PASS THIS AS ARG
-        let mut client_pool = ClientPool::new(&faulted, logger.get_sender("[ClientPool]".to_string()), 3);
-        client_pool.with_client_id(0)
-            .with_client_id(1)
-            .with_client_id(2);
+        let client_pool
+            = ClientPool::new(&faulted, logger.get_sender("[ClientPool]".to_string()), client_pool_size);
 
         let backup_pairing = BackupPairing::new(
             id,
             client_pool.clone(),
-            logger.get_sender(format!("[BackupPairing][{id}]")), //TODO
+            logger.get_sender(format!("[Controller][{id}]")),
             &faulted
         );
 
@@ -45,8 +42,8 @@ impl Process {
         }
     }
 
-    pub fn start_as_backup(id: u8) {
-        let mut program = Self::new(id);
+    pub fn start_as_backup(id: u8, client_count: usize) {
+        let mut program = Self::new(id, client_count);
 
         program.logger.send_once(format!("[{}][MAIN] Server has started in backup mode", program.process_id), LogLevel::INFO);
 
@@ -83,7 +80,7 @@ impl Process {
                             Ok(message) => {
                                 println!("{:?}", message)
                             }
-                            Err(error) => break
+                            Err(error) => todo!()
                         }
                     }
                 }

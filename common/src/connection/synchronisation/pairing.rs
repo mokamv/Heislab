@@ -23,7 +23,10 @@ impl BackupPairing {
         faulted: &Faulted
     ) -> Self {
         let (controller_state, controller_state_recv)
-            = ControllerStateNotifier::new(controller_id, logger.clone_with_new_prefix("TODO".to_string())); //TODO
+            = ControllerStateNotifier::new(
+            controller_id,
+            logger.clone()
+        );
 
         let controller_link = ControllerLink::new(
             controller_state.clone(),

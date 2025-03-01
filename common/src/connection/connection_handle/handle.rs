@@ -18,7 +18,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread::{sleep, spawn};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use ConnectionState::Killed;
 
 pub type ConnectionIdentifier = u8;
@@ -463,7 +463,7 @@ impl ConnectionHandle {
                     },
 
                     // Send keep alive periodically.
-                    recv(tick(SEND_KEEP_ALIVE_PERIOD)) -> _ => {
+                    recv(tick(Duration::from_millis(10))) -> _ => {
                         if connection_status.is_connected() {
                             if let Err(_channel_severed) = keep_alive_sender.send(TimedMessage::of(KeepAlive)) {
                                 conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
@@ -488,8 +488,8 @@ impl ConnectionHandle {
             return Err(KeepAliveTooSoon);
         }
 
-        let mut writeable_stream
-            = connection_handle_mutator.connection_state.write().unwrap();
+        let mut writeable_stream = connection_handle_mutator.connection_state.write().unwrap();
+
         match writeable_stream.deref_mut() {
             Connected { stream, .. } => {
                 // Likely alive
@@ -499,6 +499,7 @@ impl ConnectionHandle {
                 }
                 // Closed for sure
                 else {
+                    drop(writeable_stream);
                     connection_handle_mutator.logger.send("Stream has been severed while writing", LogLevel::DEBUG);
                     connection_handle_mutator.disconnect();
                     Err(HandleDisconnected)

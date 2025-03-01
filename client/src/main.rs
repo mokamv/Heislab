@@ -1,10 +1,10 @@
+use common::connection::connection_handle::handle::ConnectionHandle;
 use common::log::log_client::Logger;
 use common::messages::{Message, TimedMessage};
 use crossbeam_channel::{select, tick};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use common::connection::connection_handle::handle::ConnectionHandle;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -54,12 +54,11 @@ fn main() {
                             _ => {}
                         }
                     }
-                    Err(_) => { println!("ERRREUR") }
+                    Err(_) => { todo!() }
                 }
             },
 
-            //TODO wth 20 ms, timeout.
-            recv(tick(Duration::from_millis(1000))) -> _ => {
+            recv(tick(Duration::from_millis(10))) -> _ => {
                 if is_auth {
                     message_sender.send(TimedMessage::of(Message::GotoFloor {go_to_floor: i})).unwrap();
                     i = i.wrapping_add(1);

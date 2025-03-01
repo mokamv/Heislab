@@ -36,12 +36,18 @@ pub struct ClientPool {
 
 impl ClientPool {
     pub fn new(faulted: &Faulted, logger: ReliableLogSender, max_client_nb: usize) -> Self {
-        Self {
+        let mut pool = Self {
             shared_pool: Arc::new(Mutex::new(ClientPoolShared::new(faulted, logger, max_client_nb))),
+        };
+
+        for i in 0..max_client_nb {
+            pool.with_client_id(i as u8);
         }
+
+        pool
     }
 
-    pub fn with_client_id(&mut self, client_id: ConnectionIdentifier) -> &mut Self {
+    fn with_client_id(&mut self, client_id: ConnectionIdentifier) -> &mut Self {
         self.shared_pool.lock().unwrap().with_client_id(client_id);
         self
     }

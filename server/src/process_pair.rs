@@ -6,8 +6,8 @@ mod process;
 pub struct ProcessPair {}
 
 impl ProcessPair {
-    pub fn run_as_program(id: u8) {
-        Process::start_as_backup(id);
+    pub fn run_as_program(id: u8, client_count: usize) {
+        Process::start_as_backup(id, client_count);
     }
 
     pub fn run_as_overview(log_level: LogLevel) {
