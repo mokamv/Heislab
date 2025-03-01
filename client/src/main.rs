@@ -19,7 +19,7 @@ fn main() {
     let mut logger = Logger::init(&faulted);
 
     let mut connection_handler = ConnectionHandle::new_client_connection_handler(
-        logger.get_sender("[Client]".to_string()),
+        logger.get_sender(format!("[Client][{identifier}]")),
         &faulted
     );
 

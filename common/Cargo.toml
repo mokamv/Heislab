@@ -4,5 +4,4 @@ version = "0.1.0"
 edition = "2021"
 [dependencies]
 libc = "0.2.169"
-log = "0.4.25"
 crossbeam-channel = "0.5.14"

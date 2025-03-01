@@ -135,8 +135,8 @@ pub mod log_server {
     use std::cmp::min;
     use std::io::{Error, ErrorKind, Read};
     use std::net::{TcpListener, TcpStream};
-    use std::sync::mpsc::{channel, Receiver, SendError, Sender};
     use std::thread::spawn;
+    use crossbeam_channel::{unbounded, Receiver, SendError, Sender};
 
     /// List of potential errors the log server could encounter.
     #[derive(Debug)]
@@ -217,7 +217,7 @@ pub mod log_server {
     /// Main function of the log server module, provides a channel of all collected logs, already filtered.
     pub fn act_as_middleware_logger(log_level: LogLevel) -> Result<Receiver<LogMessage>, LogServerError> {
         let (logging_tx, logging_rx)
-            = channel();
+            = unbounded();
 
         // EPOLL, NON BLOCKING + EVENTFD TO NOTIFY (Rust is so hard to work with in this way...)
         // Why should I use posix because there are no std for epoll.....
@@ -339,9 +339,9 @@ pub mod log_client {
     use std::collections::VecDeque;
     use std::io::Write;
     use std::net::TcpStream;
-    use std::sync::mpsc::{channel, Sender};
     use std::sync::{Arc, Mutex, Weak};
     use std::thread::{sleep, spawn, JoinHandle};
+    use crossbeam_channel::{unbounded, Sender};
 
     pub struct Logger {
         logger_inst: Arc<LoggerImpl>
@@ -413,7 +413,7 @@ pub mod log_client {
         }
 
         fn with_logging_loop(faulted: &Arc<Mutex<bool>>) -> Self {
-            let (logging_tx, logging_rx) = channel::<LogMessage>();
+            let (logging_tx, logging_rx) = unbounded::<LogMessage>();
             let connect_socket: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
 
             let mut log_queue: VecDeque<LogMessage> = VecDeque::with_capacity(128);
