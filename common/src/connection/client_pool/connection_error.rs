@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct ClientPoolError {
     error_kind: ErrorKind,
 }
@@ -22,8 +23,6 @@ pub enum ErrorKind {
     
     BadIdentifier,
     DeadHandle,
-    
-    IdentificationTimedOut,
-    UnexpectedMessageType,
+
     AlreadyConnected
 }

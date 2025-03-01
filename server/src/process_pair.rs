@@ -2,15 +2,12 @@ use crate::process_pair::process::Process;
 use common::log::{log_server, LogLevel};
 
 mod process;
-mod p_state;
-mod p_message;
 
 pub struct ProcessPair {}
 
 impl ProcessPair {
     pub fn run_as_program(id: u8) {
-        let program = Process::new(id);
-        program.start_as_backup();
+        Process::start_as_backup(id);
     }
 
     pub fn run_as_overview(log_level: LogLevel) {

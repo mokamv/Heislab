@@ -1,25 +1,21 @@
-use crate::process_pair::p_state::ProcessState;
 use common::connection::client_pool::client_pool::ClientPool;
-use common::connection::connection_init::init_server::{init_controller_tcp_listening, init_udp_broadcasting, init_udp_reconciliation};
+use common::connection::connection_init::init_server::{init_controller_tcp_listening, init_udp_broadcasting};
 use common::connection::controller_state::ControllerState;
+use common::connection::synchronisation::pairing::BackupPairing;
 use common::log::log_client::Logger;
 use common::log::LogLevel;
+use crossbeam_channel::select;
 use std::process::id;
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
-use std::time::Duration;
-use crossbeam_channel::select;
-
-const MESSAGE_PERIOD: Duration = Duration::from_millis(250);
 
 pub(super) struct Process {
-    process_state: ProcessState,
+    backup_pairing: BackupPairing,
+
     client_pool: ClientPool,
     logger: Logger,
 
     process_id: u8,
     faulted: Arc<Mutex<bool>>,
-    state: Arc<Mutex<ControllerState>>
 }
 
 impl Process {
@@ -33,9 +29,15 @@ impl Process {
             .with_client_id(1)
             .with_client_id(2);
 
+        let backup_pairing = BackupPairing::new(
+            id,
+            client_pool.clone(),
+            logger.get_sender(format!("[BackupPairing][{id}]")), //TODO
+            &faulted
+        );
+
         Process {
-            process_state: ProcessState::new(),
-            state: Arc::new(Mutex::new(ControllerState::BACKUP)),
+            backup_pairing,
             process_id: id,
             client_pool: client_pool.start(),
             logger,
@@ -43,45 +45,40 @@ impl Process {
         }
     }
 
-    pub fn start_as_backup(mut self) {
-        self.logger.send_once(format!("[{}][MAIN] Server has started in backup mode", self.process_id), LogLevel::INFO);
+    pub fn start_as_backup(id: u8) {
+        let mut program = Self::new(id);
+
+        program.logger.send_once(format!("[{}][MAIN] Server has started in backup mode", program.process_id), LogLevel::INFO);
 
         let tcp_bound_to = init_controller_tcp_listening(
-            &self.state,
-            &self.faulted,
-            &self.client_pool,
-            self.logger.get_sender(format!("[{}][Main][TCP]", self.process_id))
+            program.backup_pairing.controller_state_notifier(),
+            program.backup_pairing.controller_link(),
+            &program.faulted,
+            &program.client_pool,
+            program.logger.get_sender(format!("[{}][Main][TCP]", program.process_id))
         );
 
         init_udp_broadcasting(
             tcp_bound_to,
-            &self.state,
-            &self.faulted,
-            self.process_id,
-            self.logger.get_sender(format!("[{}][MAIN][Broadcast]", self.process_id))
+            program.backup_pairing.controller_state_notifier(),
+            &program.faulted,
+            program.process_id,
+            program.logger.get_sender(format!("[{}][MAIN][Broadcast]", program.process_id))
         );
 
-        init_udp_reconciliation(
-            &self.state,
-            &self.faulted,
-            &self.client_pool,
-            self.process_id,
-            self.logger.get_sender(format!("[{}][MAIN][Broadcast]", self.process_id))
-        );
+        program.process_task_until_death();
 
-        self.process_task_until_death();
-
-        self.logger.wait_for_logger_termination();
+        program.logger.wait_for_logger_termination();
     }
 
     fn process_task_until_death(&mut self) {
         let logger = self.logger.get_sender(format!("[{}][MAIN]", id()));
-        let message_receiver = self.client_pool.take_message_channel();
+        let client_messages = self.client_pool.take_message_channel();
 
         while !*self.faulted.lock().unwrap() {
-            if *self.state.lock().unwrap() == ControllerState::MASTER {
+            if self.backup_pairing.current_state() == ControllerState::Master {
                 select! {
-                    recv(message_receiver) -> message => {
+                    recv(client_messages) -> message => {
                         match message {
                             Ok(message) => {
                                 println!("{:?}", message)

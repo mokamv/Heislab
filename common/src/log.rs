@@ -583,10 +583,6 @@ pub mod log_client {
             }
         }
 
-        pub fn clone(&self) -> Self {
-            self.clone_with_new_prefix(self.prefix.clone())
-        }
-
         pub fn clone_with_new_prefix(&self, prefix: String) -> Self {
             let logger = match self.associated_logger.upgrade() {
                 None => panic!("Logger is dead"),
@@ -594,6 +590,12 @@ pub mod log_client {
             };
 
             Logger { logger_inst: logger }.get_sender(prefix)
+        }
+    }
+
+    impl Clone for ReliableLogSender {
+        fn clone(&self) -> Self {
+            self.clone_with_new_prefix(self.prefix.clone())
         }
     }
 }

@@ -1,37 +1,31 @@
 use crate::connection::client_pool::aggregator::{ClientMessage, ClientReceiver, MessageAggregator};
 use crate::connection::client_pool::connection_error::{ClientPoolError, ErrorKind};
-use crate::connection::connection_channel::AliveStatus;
-use crate::connection::connection_handle::{ConnectionHandle, ConnectionState};
+use crate::connection::connection_handle::handle::{ConnectionHandle, ConnectionIdentifier};
 use crate::log::log_client::ReliableLogSender;
-use crate::messages::Message;
 use crate::messages::Message::Authenticated;
+use crate::messages::{Message, TimedMessage};
 use crate::program_fault::{program_set_to_faulted, Faulted};
 use crossbeam_channel::Receiver;
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
-use crate::connection::constants::IDENTIFICATION_TIMEOUT;
 
 pub enum Target {
     All,
-    Specific(u32)
+    Specific(ConnectionIdentifier)
 }
 
 pub(super) struct Client {
-    identifier: u32,
+    identifier: ConnectionIdentifier,
     connection: Arc<Mutex<ConnectionHandle>>,
 }
 
 impl Client {
-    pub(super) fn get_identifier(&self) -> u32 {
+    pub(super) fn get_identifier(&self) -> ConnectionIdentifier {
         self.identifier
     }
 
     pub(super) fn take_message_receiver(&self) -> Receiver<Message> {
         self.connection.lock().unwrap().take_receiver()
-    }
-
-    pub(super) fn take_status_receiver(&self) -> Receiver<AliveStatus> {
-        self.connection.lock().unwrap().take_status()
     }
 }
 
@@ -47,7 +41,7 @@ impl ClientPool {
         }
     }
 
-    pub fn with_client_id(&mut self, client_id: u32) -> &mut Self {
+    pub fn with_client_id(&mut self, client_id: ConnectionIdentifier) -> &mut Self {
         self.shared_pool.lock().unwrap().with_client_id(client_id);
         self
     }
@@ -57,9 +51,8 @@ impl ClientPool {
         self
     }
 
-    pub fn handle_new_connection(&mut self, connection: ConnectionHandle) -> Result<(), ClientPoolError> {
-        let (client_id, client_stream) = ClientPoolShared::handle_identification(connection)?;
-        self.shared_pool.lock().unwrap().enable_connection(client_id, client_stream)
+    pub fn connect_stream(&mut self, client_id: ConnectionIdentifier, client_stream: TcpStream ) -> Result<(), ClientPoolError> {
+        self.shared_pool.lock().unwrap().connect_stream(client_id, client_stream)
     }
 
     pub fn send(&mut self, target: Target, message: Message) -> Result<(), ClientPoolError> {
@@ -95,7 +88,7 @@ impl ClientPoolShared {
             receiver: None,
         }
     }
-    fn with_client_id(&mut self, client_id: u32) {
+    fn with_client_id(&mut self, client_id: ConnectionIdentifier) {
         if self.has_started {
             program_set_to_faulted(&self.faulted, "You cannot add clients after starting aggregation");
             return;
@@ -172,33 +165,13 @@ impl ClientPoolShared {
     }
 
     fn send_to(target_handle: &ConnectionHandle, message: Message) -> Result<(), ClientPoolError> {
-        if let Err(_connection_channel_severed) = target_handle.borrow_sender().send(message) {
+        if let Err(_connection_channel_severed) = target_handle.borrow_sender().send(TimedMessage::of(message)) {
             return Err(ClientPoolError::new(ErrorKind::DeadHandle))
         };
         Ok(())
     }
 
-    fn handle_identification(potential_handle: ConnectionHandle) -> Result<(u32, TcpStream), ClientPoolError> {
-        let message_receiver = potential_handle.borrow_receiver();
-        match message_receiver.recv_timeout(IDENTIFICATION_TIMEOUT) {
-            Ok(Message::ClientAuth { client_id }) => {
-                match potential_handle.extract_stream_and_kill() {
-                    None => Err(ClientPoolError::new(ErrorKind::IdentificationTimedOut)),
-                    Some(client_stream) => Ok((client_id as u32, client_stream))
-                }
-            },
-            Ok(_) => {
-                potential_handle.kill();
-                Err(ClientPoolError::new(ErrorKind::UnexpectedMessageType))
-            }
-            Err(_too_late_to_identify) => {
-                potential_handle.kill();
-                Err(ClientPoolError::new(ErrorKind::IdentificationTimedOut))
-            }
-        }
-    }
-
-    fn enable_connection(&mut self, identifier: u32, stream: TcpStream) -> Result<(), ClientPoolError> {
+    fn connect_stream(&mut self, identifier: ConnectionIdentifier, stream: TcpStream) -> Result<(), ClientPoolError> {
         match self.clients.iter_mut().find(|x| {
             x.identifier == identifier
         }) {
@@ -214,18 +187,11 @@ impl ClientPoolShared {
                     let _ = stream.shutdown(Shutdown::Both);
                     Err(ClientPoolError::new(ErrorKind::AlreadyConnected))
                 } else {
-                    *client_handle.connection_state.write().unwrap() =
-                        ConnectionState::Connected { controller_id: 0, stream };
-                    match Self::send_to(&client_handle, Authenticated) {
-                        Ok(_) => {
-                            client_handle.notify_status(AliveStatus::ConnectedAndAuthenticated);
-                            Ok(())
-                        },
-                        Err(error) => {
-                            *client_handle.connection_state.write().unwrap() = ConnectionState::Disconnected;
-                            Err(error)
-                        }
-                    }
+                    client_handle.connect_to(stream, 0, true);
+                    if let Err(error) = Self::send_to(&client_handle, Authenticated) {
+                        client_handle.disconnect();
+                        Err(error)
+                    } else { Ok(()) }
                 }
             }
         }

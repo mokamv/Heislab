@@ -1,11 +1,10 @@
-use common::connection::connection_handle::ConnectionHandle;
 use common::log::log_client::Logger;
-use common::messages::Message;
+use common::messages::{Message, TimedMessage};
 use crossbeam_channel::{select, tick};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use common::connection::connection_channel::AliveStatus;
+use common::connection::connection_handle::handle::ConnectionHandle;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -14,9 +13,6 @@ fn main() {
     } else {
         panic!("Need to provide an id between 0 and 255");
     };
-
-
-    println!("Hello, world!");
 
     let faulted = Arc::new(Mutex::new(false));
 
@@ -27,45 +23,47 @@ fn main() {
         &faulted
     );
 
-
     let message_sender = connection_handler.take_sender();
     let message_receiver = connection_handler.take_receiver();
-    let connected = connection_handler.take_status();
 
     let mut i = 0;
+
+    let mut is_auth = false;
+
     loop {
         select!(
             recv(message_receiver) -> message => {
                 match message {
                     Ok(message) => {
-                        print!("{:?}", message)
-                    }
-                    Err(_) => {break}
-                }
-            },
-            recv(connected) -> status => {
-                match status {
-                    Ok(connected) => {
-                        match connected {
-                            AliveStatus::Connected => {
+                        match message {
+                            Message::Connected => {
+                                is_auth = false;
                                 println!("Connected to server");
-                                message_sender.send(Message::ClientAuth { client_id: identifier }).unwrap();
+                                message_sender.send(TimedMessage::of(Message::ClientAuth { client_id: identifier })).unwrap();
                             }
-                            AliveStatus::ConnectedAndAuthenticated => {
+                            Message::Authenticated => {
+                                is_auth = true;
                                 println!("Identified to the server, starting online mode")
                             }
 
-                            AliveStatus::Disconnected => {
+                            Message::Disconnected => {
+                                is_auth = false;
                                 println!("Disconnected from server, starting offline mode");
                             }
+
+                            _ => {}
                         }
                     }
-                    Err(_) => {}
+                    Err(_) => { println!("ERRREUR") }
                 }
             },
-            recv(tick(Duration::from_secs(1))) -> instant => {
-                message_sender.send(Message::GotoFloor {go_to_floor: i}).unwrap();
-                i = i.wrapping_add(1);
+
+            //TODO wth 20 ms, timeout.
+            recv(tick(Duration::from_millis(1000))) -> _ => {
+                if is_auth {
+                    message_sender.send(TimedMessage::of(Message::GotoFloor {go_to_floor: i})).unwrap();
+                    i = i.wrapping_add(1);
+                }
             },
         );
     }

@@ -1,11 +1,23 @@
-pub mod connection_channel;
-
 pub mod connection_init {
     pub mod init_server;
-    pub mod init_client;
+
+    pub mod init_error;
 }
 
-pub mod connection_handle;
+pub mod synchronisation {
+    pub mod pairing;
+
+    pub mod controller_link;
+
+    pub mod link_error;
+}
+
+pub mod connection_handle {
+    pub mod channel;
+    pub mod handle;
+    pub mod client_init;
+    pub mod backup_init;
+}
 
 pub mod controller_state;
 
@@ -40,7 +52,7 @@ mod constants {
         pub const SERVER_UDP_BROADCAST_PORT: u16 = 9001;
         pub const SERVER_UDP_BROADCAST_ADDR: SocketAddr =
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)), SERVER_UDP_BROADCAST_PORT);
-        pub const CLIENT_UDP_LISTEN_ADDR: SocketAddr =
+        pub const UDP_LISTEN_ADDR: SocketAddr =
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), SERVER_UDP_BROADCAST_PORT);
 
         pub const SERVER_TCP_PORT: u16 = 10000;

@@ -1,40 +1,26 @@
+use crate::connection::client_pool::client_pool::Client;
+use crate::connection::connection_handle::handle::ConnectionIdentifier;
 use crate::messages::Message;
 use crate::program_fault::Faulted;
 use crossbeam_channel::{unbounded, Receiver, RecvError, Select, SendError, Sender};
 use std::thread::spawn;
 use std::time::Duration;
-use crate::connection::client_pool::client_pool::Client;
-use crate::connection::connection_channel::AliveStatus;
 
 #[derive(Debug)]
 pub struct ClientMessage {
-    pub identifier: u32,
-    pub message: MessageType
-}
-
-#[derive(Debug)]
-pub enum MessageType {
-    Data(Message),
-    Connected,
-    Disconnected
-}
-
-#[derive(Debug)]
-enum ReceiverType {
-    StatusReceiver(Receiver<AliveStatus>),
-    MessageReceiver(Receiver<Message>)
+    pub identifier: ConnectionIdentifier,
+    pub message: Message
 }
 
 struct AggregatedReceiver {
     selection_index: usize,
-    internal_client_identifier: u32,
-    internal_receiver: ReceiverType,
+    internal_client_identifier: ConnectionIdentifier,
+    internal_receiver: Receiver<Message>,
 }
 
 pub(super) struct ClientReceiver {
-    internal_client_identifier: u32,
+    internal_client_identifier: ConnectionIdentifier,
     internal_receiver: Receiver<Message>,
-    internal_status_receiver: Receiver<AliveStatus>
 }
 
 impl ClientReceiver {
@@ -44,7 +30,6 @@ impl ClientReceiver {
             clients_receivers.push(ClientReceiver {
                 internal_client_identifier: client.get_identifier(),
                 internal_receiver: client.take_message_receiver(),
-                internal_status_receiver: client.take_status_receiver(),
             })
         }
         clients_receivers
@@ -69,11 +54,7 @@ impl<'a> MessageAggregator<'a> {
 
             // Add receivers to selector
             for receiver in receivers.iter() {
-                let index = match &receiver.internal_receiver {
-                    ReceiverType::StatusReceiver(recv) => selector.recv(recv),
-                    ReceiverType::MessageReceiver(recv) => selector.recv(recv)
-                };
-
+                let index = selector.recv(&receiver.internal_receiver);
                 assert_eq!(index, receiver.selection_index)
             }
 
@@ -101,16 +82,10 @@ impl<'a> MessageAggregator<'a> {
             receivers.push(AggregatedReceiver {
                 selection_index: index,
                 internal_client_identifier: client.internal_client_identifier,
-                internal_receiver: ReceiverType::MessageReceiver(client.internal_receiver),
+                internal_receiver: client.internal_receiver,
             });
 
-            receivers.push(AggregatedReceiver {
-                selection_index: index + 1,
-                internal_client_identifier: client.internal_client_identifier,
-                internal_receiver: ReceiverType::StatusReceiver(client.internal_status_receiver),
-            });
-
-            index += 2
+            index += 1
         }
 
         receivers
@@ -120,19 +95,8 @@ impl<'a> MessageAggregator<'a> {
         match self.selector.select_timeout(Duration::from_millis(50)) {
             Ok(operation) => {
                 let aggregated_receiver = self.borrow_receiver(operation.index())?;
-                let message = match &aggregated_receiver.internal_receiver {
-                    ReceiverType::StatusReceiver(status_recv) => {
-                        match operation.recv(status_recv)? {
-                            AliveStatus::Disconnected => MessageType::Disconnected,
-                            AliveStatus::Connected | AliveStatus::ConnectedAndAuthenticated => //TODO CHECK
-                                MessageType::Connected
-                        }
-                    }
+                let message = operation.recv(&aggregated_receiver.internal_receiver)?;
 
-                    ReceiverType::MessageReceiver(message_recv) => {
-                        MessageType::Data(operation.recv(message_recv)?)
-                    }
-                };
                 Ok(self.global_message_sender.send(ClientMessage {
                     identifier: aggregated_receiver.internal_client_identifier,
                     message,
@@ -160,13 +124,13 @@ enum AggregatorError {
 }
 
 impl From<RecvError> for AggregatorError {
-    fn from(value: RecvError) -> Self {
+    fn from(_value: RecvError) -> Self {
         AggregatorError::SeveredAggregated
     }
 }
 
 impl From<SendError<ClientMessage>> for AggregatorError {
-    fn from(value: SendError<ClientMessage>) -> Self {
+    fn from(_value: SendError<ClientMessage>) -> Self {
         AggregatorError::SeveredGlobalAggregator
     }
 }

@@ -1,5 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use crate::messages::Message::{Authenticated, ClientAuth, ClientButtonCall, ClientObstructed, ClientReachFloor, GotoFloor, KeepAlive, LightControl, SocketAddress};
+use std::time::Instant;
+use Message::{Connected, ControllerAuth, Disconnected};
+use crate::connection::connection_handle::channel::{AliveStatus, AliveValue};
+use crate::messages::Message::{Authenticated, ClientAuth, ClientButtonCall, ClientObstructed, ClientReachFloor, GotoFloor, KeepAlive, LightControl, ControllerAddress, ControllerCurrentState};
 
 type RawMessage = [u8; MESSAGE_SIZE];
 pub const MESSAGE_SIZE: usize = 32;
@@ -7,24 +10,53 @@ pub const DEFAULT_MESSAGE: [u8; MESSAGE_SIZE] = [0u8; MESSAGE_SIZE];
 use crate::connection::controller_state::ControllerState;
 use crate::messages::PhysicalButton::{CAB, HALL};
 
+#[derive(Debug)]
+pub struct TimedMessage {
+    timestamp: Instant,
+    message: Message
+}
+
+impl TimedMessage {
+    pub fn of(message: Message) -> Self {
+        Self {
+            timestamp: Instant::now(),
+            message,
+        }
+    }
+
+    pub fn timestamp(&self) -> Instant {
+        self.timestamp
+    }
+
+    pub fn message(self) -> Message {
+        self.message
+    }
+}
+
 // Limited to 255 types of messages if coding message type on the first byte
 #[derive(Debug, Copy, Clone)]
 pub enum Message {
     KeepAlive,
 
     // Client messages
-    ClientAuth{ client_id: u8 }, // Client identifier
     ClientObstructed { is_obstructed: bool },
     ClientReachFloor { floor_reached: u8 },
     ClientButtonCall { pressed: PhysicalButton },
 
     // Controller messages
-    SocketAddress{ id: u8, state: ControllerState, address: SocketAddr },
+    ControllerAddress { id: u8, state: ControllerState, address: SocketAddr },
     LightControl { target: PhysicalButton, is_lit: bool },
     GotoFloor { go_to_floor: u8 },
 
-    // Connection State Related
-    Authenticated //TODO OTHER
+    // Connection State flow
+    Connected,
+    Authenticated,
+    Disconnected,
+    ClientAuth{ client_id: u8 }, // Client identifier
+
+    // Synchronisation messages
+    ControllerAuth { controller_id: u8 },
+    ControllerCurrentState { id: u8, state: ControllerState },
 }
 
 impl Message {
@@ -41,26 +73,22 @@ impl Message {
             KeepAlive => {}
 
             // Client encode
-            ClientAuth { client_id } => {
-                raw_message[0] = 1;
-                raw_message[1] = client_id
-            }
             ClientObstructed { is_obstructed } => {
-                raw_message[0] = 2;
+                raw_message[0] = 1;
                 raw_message[1] = is_obstructed as u8
 
             },
             ClientReachFloor { floor_reached } => {
-                raw_message[0] = 3;
+                raw_message[0] = 2;
                 raw_message[1] = floor_reached
             },
             ClientButtonCall { pressed } => {
-                raw_message[0] = 4;
+                raw_message[0] = 3;
                 raw_message[1..4].copy_from_slice(&pressed.encode());
             },
 
             // Controller encode
-            SocketAddress { id, state, address } => {
+            ControllerAddress { id, state, address } => {
                 raw_message[0] = 128;
                 raw_message[1] = id;
                 raw_message[2] = state.into();
@@ -87,8 +115,26 @@ impl Message {
                 raw_message[1] = go_to_floor;
             },
 
-            Authenticated => {
-                raw_message[0] = 240;
+            // State flow
+            Connected => raw_message[0] = 160,
+            Disconnected => raw_message[0] = 161,
+            Authenticated => raw_message[0] = 162,
+            ClientAuth { client_id } => {
+                raw_message[0] = 163;
+                raw_message[1] = client_id
+            }
+
+
+            // Synchro
+            ControllerAuth { controller_id } => {
+                raw_message[0] = 192;
+                raw_message[1] = controller_id;
+            }
+
+            ControllerCurrentState { id, state } => {
+                raw_message[0] = 193;
+                raw_message[1] = id;
+                raw_message[2] = state.into();
             }
         }
 
@@ -99,14 +145,13 @@ impl Message {
             0 => KeepAlive,
 
             // Client messages
-            1 => ClientAuth { client_id: raw_message[1] },
-            2 => ClientObstructed { is_obstructed: raw_message[1] != 0 },
-            3 => ClientReachFloor { floor_reached: raw_message[1] },
-            4 => ClientButtonCall { pressed: PhysicalButton::decode(&raw_message[1..4]) },
+            1 => ClientObstructed { is_obstructed: raw_message[1] != 0 },
+            2 => ClientReachFloor { floor_reached: raw_message[1] },
+            3 => ClientButtonCall { pressed: PhysicalButton::decode(&raw_message[1..4]) },
 
             
             // Controller messages
-            128 => SocketAddress {
+            128 => ControllerAddress {
                 id: raw_message[1],
                 state: raw_message[2].into(),
                 address: match raw_message[3] {
@@ -128,9 +173,26 @@ impl Message {
             130 => GotoFloor { go_to_floor: raw_message[1] },
 
 
-            240 => Authenticated,
+            160 => Connected,
+            161 => Disconnected,
+            162 => Authenticated,
+            163 => ClientAuth { client_id: raw_message[1] },
+
+            192 => ControllerAuth { controller_id: raw_message[1] },
+            193 => ControllerCurrentState {
+                id: raw_message[1],
+                state: raw_message[2].into(),
+            },
 
             code => panic!("Bad message code received: {code}"),
+        }
+    }
+
+    pub fn from_status(status: AliveStatus) -> Self {
+        match status.value() {
+            AliveValue::Connected => Connected,
+            AliveValue::Disconnected => Disconnected,
+            AliveValue::ConnectedAndAuthenticated => Authenticated
         }
     }
 }
