@@ -2,13 +2,13 @@ use crate::connection::client_pool::client_pool::ClientPool;
 use crate::connection::controller_state::ControllerState::{Backup, Master, MasterSteppingDown};
 use crate::connection::controller_state::{ControllerState, ControllerStateNotifier};
 use crate::connection::synchronisation::controller_link::ControllerLink;
-use crate::log::log_client::ReliableLogSender;
 use crate::messages::Message::{ControllerAuth, ControllerCurrentState};
 use crate::messages::{Message, TimedMessage};
 use crate::program_fault::Faulted;
 use crossbeam_channel::{select_biased, Receiver};
 use std::cmp::Ordering;
 use std::thread::spawn;
+use log::log_client::ReliableLogSender;
 
 pub struct BackupPairing {
     controller_link: ControllerLink,

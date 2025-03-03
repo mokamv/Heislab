@@ -5,7 +5,6 @@ use crate::connection::constants::{BIND_MAX_RETRY, BIND_RETRY_PERIOD, BROADCAST_
 use crate::connection::controller_state::ControllerState::Master;
 use crate::connection::controller_state::ControllerStateNotifier;
 use crate::connection::unix_socket::udp_socket_sharing_port;
-use crate::log::LogLevel;
 use crate::messages::Message::ControllerAddress;
 use crate::messages::{Message, DEFAULT_MESSAGE, MESSAGE_SIZE};
 use std::io::ErrorKind;
@@ -13,6 +12,7 @@ use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::Instant;
+use log::LogLevel;
 
 pub fn listen_and_synchronize(
     connection_handle_mutator: ConnectionHandleMutator,

@@ -2,11 +2,11 @@ use common::connection::client_pool::client_pool::ClientPool;
 use common::connection::connection_init::init_server::{init_controller_tcp_listening, init_udp_broadcasting};
 use common::connection::controller_state::ControllerState;
 use common::connection::synchronisation::pairing::BackupPairing;
-use common::log::log_client::Logger;
-use common::log::LogLevel;
 use crossbeam_channel::select;
 use std::process::id;
 use std::sync::{Arc, Mutex};
+use log::log_client::Logger;
+use log::LogLevel;
 
 pub(super) struct Process {
     backup_pairing: BackupPairing,

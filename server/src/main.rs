@@ -1,7 +1,7 @@
 use server::ProcessPair;
 use std::env::args;
 use std::str::FromStr;
-use common::log::LogLevel;
+use log::LogLevel;
 
 const CLIENT_COUNT: usize = 3;
 

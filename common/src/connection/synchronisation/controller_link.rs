@@ -6,9 +6,9 @@ use crate::messages::{Message, TimedMessage};
 use crossbeam_channel::{Receiver, Sender};
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
+use log::log_client::ReliableLogSender;
 use crate::connection::client_pool::client_pool::ClientPool;
 use crate::connection::controller_state::ControllerStateNotifier;
-use crate::log::log_client::ReliableLogSender;
 use crate::program_fault::Faulted;
 
 pub struct ControllerLink {

@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use log::log_client::ReliableLogSender;
+use log::LogLevel;
 use crate::connection::connection_handle::handle::ConnectionIdentifier;
 use crate::connection::controller_state::ControllerState::{Backup, Master, MasterSteppingDown};
-use crate::log::log_client::ReliableLogSender;
-use crate::log::LogLevel;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ControllerState {

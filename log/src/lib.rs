@@ -1,7 +1,7 @@
-use crate::log::log_message::LogMessageError;
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
+use crate::log_message::LogMessageError;
 
 const CONNECTION_RETRY: Duration = Duration::from_secs(5);
 const DEAD_LOGGER_PURGE_PERIOD: Duration = Duration::from_secs(120);
@@ -54,7 +54,7 @@ impl LogLevel {
 ///
 /// This module is used internally to ease the conversion to and from raw form, and also to facilitate filtering.
 mod log_message {
-    use crate::log::LogLevel;
+    use crate::LogLevel;
 
     pub const MAX_MESSAGE_LENGTH: usize = 4096;
 
@@ -67,7 +67,7 @@ mod log_message {
     }
 
     #[derive(Debug)]
-pub enum LogMessageError {
+    pub enum LogMessageError {
         BadLogLevel,
         MessageTooLarge
     }
@@ -130,13 +130,13 @@ pub enum LogMessageError {
 ///
 /// A utility function - [act_as_primary_logger] - is also provided, as an in-house middleware, that only redirect all logs to stdout
 pub mod log_server {
-    use crate::log::log_message::{decode_header, empty_log_header, LogBodyPart, LogHeader, LogMessage, LogMessageError};
-    use crate::log::{LogLevel, LOG_SERVER_TCP_ADDRESS};
     use std::cmp::min;
     use std::io::{Error, ErrorKind, Read};
     use std::net::{TcpListener, TcpStream};
     use std::thread::spawn;
     use crossbeam_channel::{unbounded, Receiver, SendError, Sender};
+    use crate::log_message::{decode_header, empty_log_header, LogBodyPart, LogHeader, LogMessage, LogMessageError};
+    use crate::{LogLevel, LOG_SERVER_TCP_ADDRESS};
 
     /// List of potential errors the log server could encounter.
     #[derive(Debug)]
@@ -334,14 +334,14 @@ pub mod log_server {
 }
 
 pub mod log_client {
-    use crate::log::log_message::LogMessage;
-    use crate::log::{LogLevel, CONNECTION_RETRY, DEAD_LOGGER_PURGE_PERIOD, LOG_SERVER_TCP_ADDRESS};
     use std::collections::VecDeque;
     use std::io::Write;
     use std::net::TcpStream;
     use std::sync::{Arc, Mutex, Weak};
     use std::thread::{sleep, spawn, JoinHandle};
     use crossbeam_channel::{unbounded, Sender};
+    use crate::log_message::LogMessage;
+    use crate::{LogLevel, CONNECTION_RETRY, DEAD_LOGGER_PURGE_PERIOD, LOG_SERVER_TCP_ADDRESS};
 
     pub struct Logger {
         logger_inst: Arc<LoggerImpl>

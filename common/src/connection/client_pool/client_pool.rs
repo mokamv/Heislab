@@ -1,7 +1,7 @@
+use log::log_client::ReliableLogSender;
 use crate::connection::client_pool::aggregator::{ClientMessage, ClientReceiver, MessageAggregator};
 use crate::connection::client_pool::connection_error::{ClientPoolError, ErrorKind};
 use crate::connection::connection_handle::handle::{ConnectionHandle, ConnectionIdentifier};
-use crate::log::log_client::ReliableLogSender;
 use crate::messages::Message::Authenticated;
 use crate::messages::{Message, TimedMessage};
 use crate::program_fault::{program_set_to_faulted, Faulted};

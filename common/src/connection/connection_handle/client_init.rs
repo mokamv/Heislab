@@ -5,7 +5,6 @@ use crate::connection::constants::{
 };
 use crate::connection::controller_state::ControllerState;
 use crate::connection::unix_socket::udp_socket_sharing_port;
-use crate::log::LogLevel;
 use crate::messages::{Message, DEFAULT_MESSAGE, MESSAGE_SIZE};
 use std::io::ErrorKind;
 use std::net::UdpSocket;
@@ -13,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::Instant;
 use ControllerState::Master;
+use log::LogLevel;
 
 pub fn listen_for_controller_loop(
     connection_handle_mutator: ConnectionHandleMutator,

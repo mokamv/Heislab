@@ -1,5 +1,5 @@
+use log::{log_server, LogLevel};
 use crate::process_pair::process::Process;
-use common::log::{log_server, LogLevel};
 
 mod process;
 

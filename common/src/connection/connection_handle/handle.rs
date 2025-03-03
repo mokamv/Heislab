@@ -6,8 +6,6 @@ use crate::connection::connection_handle::handle::ConnectionState::{Connected, D
 use crate::connection::connection_handle::handle::MessageSendError::{HandleDisconnected, HandleKilled, KeepAliveTooSoon};
 use crate::connection::constants::{MESSAGE_POLLING_PERIOD, SEND_KEEP_ALIVE_PERIOD, TCP_TIMEOUT};
 use crate::connection::controller_state::ControllerStateNotifier;
-use crate::log::log_client::ReliableLogSender;
-use crate::log::LogLevel;
 use crate::messages::Message::KeepAlive;
 use crate::messages::{Message, TimedMessage, DEFAULT_MESSAGE, MESSAGE_SIZE};
 use crate::program_fault::{program_set_to_faulted, Faulted};
@@ -20,6 +18,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
 use ConnectionState::Killed;
+use log::log_client::ReliableLogSender;
+use log::LogLevel;
 
 pub type ConnectionIdentifier = u8;
 

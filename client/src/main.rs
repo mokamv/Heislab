@@ -1,10 +1,10 @@
 use common::connection::connection_handle::handle::ConnectionHandle;
-use common::log::log_client::Logger;
 use common::messages::{Message, TimedMessage};
 use crossbeam_channel::{select, tick};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use log::log_client::Logger;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -32,6 +32,12 @@ fn main() {
 
     loop {
         select!(
+            /*
+
+            Every elevator event
+
+            */
+
             recv(message_receiver) -> message => {
                 match message {
                     Ok(message) => {
