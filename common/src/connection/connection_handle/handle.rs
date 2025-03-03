@@ -202,7 +202,7 @@ impl ConnectionHandle {
     }
 
     pub fn new_server_connection_handler(logger: ReliableLogSender, faulted: &Faulted) -> Self {
-        Self::uninitialized(&logger, faulted, true)
+        Self::uninitialized(&logger, faulted, false)
     }
 
     pub fn new_client_connection_handler(logger: ReliableLogSender, faulted: &Arc<Mutex<bool>>) -> Self {

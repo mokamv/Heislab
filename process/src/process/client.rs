@@ -1,0 +1,86 @@
+use crossbeam_channel::{select, Receiver, RecvError, Sender};
+use common::messages::{Message, TimedMessage};
+use crate::elevator::client::elevator_interaction::ElevatorInteraction;
+use crate::process::common::Process;
+
+const FLOOR_COUNT: u8 = 4;
+
+impl Process {
+    pub(crate) fn client_task(&mut self) {
+        let message_sender = self.client_handle.take_sender();
+        let message_receiver = self.client_handle.take_receiver();
+
+        let mut client_state = ClientState {
+            identifier: self.process_id,
+            elevator_control: ElevatorInteraction::new("127.0.0.1:15657", FLOOR_COUNT),
+            is_auth: false,
+            message_sender,
+            message_receiver,
+        };
+
+        println!("Elevator started");
+        loop {
+            select! {
+                recv(client_state.message_receiver) -> message => {
+                    client_state.handle_message(message);
+                },
+                recv(client_state.elevator_control.event_channel.call_button_rx) -> a => {
+                    let call_button = a.unwrap();
+                    // elevator_controller.state.handle_call_button(call_button);
+                },
+                recv(client_state.elevator_control.event_channel.floor_sensor_rx) -> a => {
+                    let floor = a.unwrap();
+                    // elevator_controller.state.handle_floor_sensor(floor)
+                },
+                recv(client_state.elevator_control.event_channel.stop_button_rx) -> a => {
+                    let is_pressed = a.unwrap();
+                    // elevator_controller.state.handle_stop(is_pressed);
+                },
+                recv(client_state.elevator_control.event_channel.obstruction_rx) -> a => {
+                    let is_obstructed = a.unwrap();
+                    // elevator_controller.state.handle_obstruction(is_obstructed);
+                },
+                recv(client_state.elevator_control.event_channel.close_door_rx) -> _ => {
+                    // elevator_controller.state.handle_close_door();
+                }
+            }
+        }
+    }
+}
+
+struct ClientState {
+    identifier: u8,
+    elevator_control: ElevatorInteraction,
+    is_auth: bool,
+    message_sender: Sender<TimedMessage>,
+    message_receiver: Receiver<Message>
+}
+
+
+impl ClientState {
+    pub fn handle_message(&mut self, message: Result<Message, RecvError>) {
+        match message {
+            Ok(message) => {
+                match message {
+                    Message::Connected => {
+                        self.is_auth = false;
+                        println!("Connected to server");
+                        self.message_sender.send(TimedMessage::of(Message::ClientAuth { client_id: self.identifier })).unwrap();
+                    }
+                    Message::Authenticated => {
+                        self.is_auth = true;
+                        println!("Identified to the server, starting online mode")
+                    }
+
+                    Message::Disconnected => {
+                        self.is_auth = false;
+                        println!("Disconnected from server, starting offline mode");
+                    }
+
+                    _ => {}
+                }
+            }
+            Err(_) => { todo!() }
+        }
+    }
+}
