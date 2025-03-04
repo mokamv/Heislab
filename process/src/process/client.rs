@@ -31,7 +31,17 @@ impl Process {
                 },
                 recv(client_state.elevator_control.event_channel.call_button_rx) -> a => {
                     let call_button = a.unwrap();
-                    // elevator_controller.state.handle_call_button(call_button);
+
+                    let pressed_button = match call_button.call {
+                        driver_rust::elevio::elev::HALL_UP => PhysicalButton::Hall { direction_is_up: true, floor: call_button.floor },
+                        driver_rust::elevio::elev::HALL_DOWN => PhysicalButton::Hall { direction_is_up: false, floor: call_button.floor },
+                        driver_rust::elevio::elev::CAB => PhysicalButton::Cab { floor: call_button.floor }
+                        _ => panic!("TODO")
+                    }
+                    
+                    client_state.message_sender.send(TimedMessage::of(Message::ClientButtonCall {
+                        pressed: pressed_button
+                    })).unwrap()
                 },
                 recv(client_state.elevator_control.event_channel.floor_sensor_rx) -> a => {
                     let floor = a.unwrap();

@@ -6,12 +6,15 @@ use driver_rust::elevio::elev::Elevator;
 use std::cmp::PartialEq;
 use driver_rust::elevio::poll::CallButton;
 use crate::single_elevator_controller::door_control::DoorControl;
+use crate::process::client::ClientState;
+use common::message::Message;
 
 pub struct ElevatorState {
     elevator: Elevator,
     main_queue: Queue,
     door_control: DoorControl,
     current_service: CurrentService,
+    is_connected: bool
 }
 
 impl ElevatorState {
@@ -26,6 +29,60 @@ impl ElevatorState {
         calibrated.add_call(Request::Cab(current_floor));
 
         calibrated
+    }
+
+    fn cost(&mut self, call: CallButton) -> i8{
+        let weight: <i8> = 0; //max number is 127
+        
+        if self.current_service.state.get_current_floor() == call.floor || 
+           self.main_queue.iter().any(|call| call.floor == call.floor) {
+            weight = 127;
+        }
+        }
+        else if self.current_service.state.get_direction_from_to(){
+            weight = -1;
+        }
+        else {
+            weight = self.main_queue.len();
+        }
+
+        weight
+
+        // let weight_vec: Vec<i8> = vec![0; elevators_running as usize]; //max weight 127
+        // incr = 0;
+
+        // for state in state_vector.iter_mut() {
+        //     if ! state.is_running(){ //TODO: make a state struct that holds which elevators are working
+        //         weight_vec[incr] = 127
+        //     }
+        //     else if ! state.add_call(call){ //already in queue
+        //         weight_vec[incr] = -128
+        //         break;
+        //     }
+        //     else if state.current_service.state.get_direction_from_to(){
+        //         weight_vec[incr] = -1
+        //         break;
+        //         //TODO: check if the call is on the way
+        //         //TODO: check if right function
+        //     }
+        //     else {
+        //         weight_vec[incr] = state.main_queue.len() 
+        //     }
+        //     incr += 1;
+        // }
+        // return min of weight_vec index
+
+        // min_index = 0;
+        // min_value = 200;
+        // incr = 0
+        // for weight in weight_vec.iter_mut();
+        //     if weight < min_value{
+        //         min_index = 0;
+        //     }
+        //     incr += 1;
+
+        // min_index
+
     }
 
     pub fn new_uncalibrated(door_control: DoorControl, elevator: Elevator) -> ElevatorState {
@@ -62,19 +119,21 @@ impl ElevatorState {
 
     pub fn handle_call_button(&mut self, call: CallButton) {
         //TODO: run the cost function?
-
-        let request = match call.call {
-            e::CAB => Request::Cab(call.floor),
-            e::HALL_DOWN => Request::Hall(call.floor, e::DIRN_DOWN),
-            e::HALL_UP => Request::Hall(call.floor, e::DIRN_UP),
-            _ => panic!("Unexpected State")
-        };
+        
         let light_id = request.light_id();
+        let cost = self.cost(request); 
 
-        if self.add_call(request) {
-            self.elevator.call_button_light(call.floor, light_id, true);
-            self.update_elevator();
-        }
+        //TODO: send message with cost to the event controller
+        Message::ElevatorCost { cost: cost };
+        ClientState.message_sender.send(TimedMessage::of(Message::ElevatorCost { client_id: self.identifier })).unwrap();
+
+
+        // TODO: First check cost before adding to queue
+
+        // if self.add_call(request) {
+        //     self.elevator.call_button_light(call.floor, light_id, true);
+        //     self.update_elevator();
+        // }
     }
 
     pub fn handle_floor_sensor(&mut self, current_floor: u8) {
