@@ -10,7 +10,10 @@ fn main() {
     let mut id: Option<u8> = None;
     let mut with_controller: bool = true;
 
-    for argument in args() {
+    let mut args = args();
+    args.next();
+    
+    for argument in args {
         match argument.as_str() {
             "--overview" => overview = true,
             "--no-controller" => with_controller = false,

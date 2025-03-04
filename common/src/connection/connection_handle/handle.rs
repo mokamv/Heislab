@@ -8,18 +8,19 @@ use crate::connection::constants::{MESSAGE_POLLING_PERIOD, SEND_KEEP_ALIVE_PERIO
 use crate::connection::controller_state::ControllerStateNotifier;
 use crate::messages::Message::KeepAlive;
 use crate::messages::{Message, TimedMessage, DEFAULT_MESSAGE, MESSAGE_SIZE};
-use crate::program_fault::{program_set_to_faulted, Faulted};
 use crossbeam_channel::{select_biased, tick, unbounded, Receiver, Sender};
+use faulted::{is_faulted, set_to_faulted};
+use log::log_client::ReliableLogSender;
+use log::LogLevel;
 use std::cmp::Ordering;
+use std::fmt::format;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
 use ConnectionState::Killed;
-use log::log_client::ReliableLogSender;
-use log::LogLevel;
 
 pub type ConnectionIdentifier = u8;
 
@@ -47,10 +48,9 @@ pub(in super::super::super::connection) enum ConnectionState {
 #[inline]
 fn conditional_faulting(
     state: &Arc<RwLock<ConnectionState>>,
-    faulted: &Arc<Mutex<bool>>,
     reason: &str
 ) {
-    if let Killed = state.read().unwrap().deref() {} else { program_set_to_faulted(faulted, reason); }
+    if let Killed = state.read().unwrap().deref() {} else { set_to_faulted(reason); }
 }
 
 pub struct ConnectionHandleMutator {
@@ -77,7 +77,9 @@ impl ConnectionHandleMutator {
     fn connect_to(&self, address: SocketAddr, controller_id: ConnectionIdentifier) {
         match TcpStream::connect(address) {
             Ok(stream) => {
-                stream.set_nonblocking(true).unwrap();
+                if let Err(err) = stream.set_nonblocking(true) {
+                    set_to_faulted(&format!("Cannot set stream to nonblocking: {err}"))
+                }
                 self.connect_with(stream, controller_id);
             }
             Err(_) => {
@@ -139,16 +141,14 @@ pub struct ConnectionHandle {
     connection_state: Arc<RwLock<ConnectionState>>,
     channels: ConnectionTransmitters,
     is_temporary: bool,
-    logger: ReliableLogSender,
-    faulted: Arc<Mutex<bool>>,
+    logger: ReliableLogSender
 }
 
 impl ConnectionHandle {
-    fn uninitialized(logger: &ReliableLogSender, faulted: &Arc<Mutex<bool>>, is_temporary: bool) -> Self {
+    fn uninitialized(logger: &ReliableLogSender, is_temporary: bool) -> Self {
         let mut connection = Self {
             connection_state: Arc::new(RwLock::new(Disconnected)),
             channels: ConnectionTransmitters::init(),
-            faulted: faulted.clone(),
             logger: logger.clone(),
             is_temporary
         };
@@ -170,12 +170,11 @@ impl ConnectionHandle {
     pub(in super::super::super::connection) fn new_temporary_connection_handler(
         stream: TcpStream,
         logger: ReliableLogSender,
-        faulted: &Arc<Mutex<bool>>
     ) -> Self {
-        let connection = Self::uninitialized(&logger, faulted, true);
+        let connection = Self::uninitialized(&logger, true);
 
         if let Err(_non_blocking_error) = stream.set_nonblocking(true) {
-            *faulted.lock().unwrap() = true;
+            set_to_faulted("Cannot set stream to non blocking");
         }
 
         connection.connect_to(stream, 0, false);
@@ -186,28 +185,26 @@ impl ConnectionHandle {
     pub fn new_backup_connection_handler(
         controller_state: ControllerStateNotifier,
         client_pool: ClientPool,
-        logger: ReliableLogSender,
-        faulted: &Faulted,
+        logger: ReliableLogSender
     ) -> ConnectionHandle {
-        let handle =  Self::uninitialized(&logger, faulted, false);
+        let handle =  Self::uninitialized(&logger, false);
 
         listen_and_synchronize(
             handle.get_handle_mutator(),
             controller_state,
-            client_pool,
-            faulted,
+            client_pool
         );
 
         handle
     }
 
-    pub fn new_server_connection_handler(logger: ReliableLogSender, faulted: &Faulted) -> Self {
-        Self::uninitialized(&logger, faulted, false)
+    pub fn new_server_connection_handler(logger: ReliableLogSender) -> Self {
+        Self::uninitialized(&logger, false)
     }
 
-    pub fn new_client_connection_handler(logger: ReliableLogSender, faulted: &Arc<Mutex<bool>>) -> Self {
-        let handle = Self::uninitialized(&logger, faulted, false);
-        listen_for_controller_loop(handle.get_handle_mutator(), faulted);
+    pub fn new_client_connection_handler(logger: ReliableLogSender) -> Self {
+        let handle = Self::uninitialized(&logger, false);
+        listen_for_controller_loop(handle.get_handle_mutator());
         handle
     }
 
@@ -278,7 +275,6 @@ impl ConnectionHandle {
 
     fn message_recv_loop(&mut self) -> Receiver<Message> {
         let connection_handle_mutator = self.get_handle_mutator();
-        let faulted = self.faulted.clone();
 
         let (message_tcp_recv_tx, message_tcp_recv_rx) = unbounded();
         let mut raw_message_buffer = DEFAULT_MESSAGE;
@@ -288,7 +284,7 @@ impl ConnectionHandle {
         spawn(move || {
             let logger = connection_handle_mutator.logger();
             'message_receive_loop: loop {
-                if *faulted.lock().unwrap() { break 'message_receive_loop }
+                if is_faulted() { break 'message_receive_loop }
 
                 let mut writeable_stream
                     = connection_handle_mutator.connection_state.write().unwrap();
@@ -313,7 +309,6 @@ impl ConnectionHandle {
                                 if let Err(_channel_severed) = message_tcp_recv_tx.send(message) {
                                     conditional_faulting(
                                         &connection_handle_mutator.connection_state,
-                                        &faulted,
                                         "Unable to transmit packet from the network since the channel broke");
                                     break 'message_receive_loop
                                 }
@@ -373,7 +368,6 @@ impl ConnectionHandle {
         let connection_status_recv = self.channels.take_status();
 
         let connection_handle_mutator = self.get_handle_mutator();
-        let faulted = self.faulted.clone();
 
         let (messages_read, handle_message_receiver) = unbounded();
         let (handle_message_sender, messages_to_send) = unbounded::<TimedMessage>();
@@ -382,11 +376,13 @@ impl ConnectionHandle {
         let logger = self.logger.clone();
 
         spawn(move || {
+            let keep_alive_period = tick(Duration::from_millis(100));
+
             let mut last_message_sent = Instant::now();
             let mut connection_status = AliveStatus::of(AliveValue::Disconnected);
 
             'message_receive_loop: loop {
-                if *faulted.lock().unwrap() { break 'message_receive_loop }
+                if is_faulted() { break 'message_receive_loop }
 
                 select_biased!(
                     // Keep track of connection status.
@@ -395,13 +391,13 @@ impl ConnectionHandle {
                             Ok(status) => {
                                 connection_status = status;
                                 if let Err(_channel_severed) = messages_read.send(Message::from_status(status)) {
-                                    conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
+                                    conditional_faulting(&connection_handle_mutator.connection_state,
                                         "Unable to send the status since the channel broke");
                                     break 'message_receive_loop
                                 }
                             }
                             Err(_channel_severed) => {
-                                conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
+                                conditional_faulting(&connection_handle_mutator.connection_state,
                                     "Unable to transmit packet to the network since the channel broke");
                                 break 'message_receive_loop
                             }
@@ -421,7 +417,7 @@ impl ConnectionHandle {
                                         message => {
                                             logger.send(&format!("Received Message: {message:?} at {:?}", Instant::now()), LogLevel::DEBUG);
                                             if let Err(_channel_severed) = messages_read.send(message) {
-                                                conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
+                                                conditional_faulting(&connection_handle_mutator.connection_state,
                                                     "Unable to send the message since the channel broke");
                                                 break 'message_receive_loop
                                             }
@@ -431,7 +427,7 @@ impl ConnectionHandle {
                             }
 
                             Err(_channel_severed) => {
-                                conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
+                                conditional_faulting(&connection_handle_mutator.connection_state,
                                     "Unable to transmit packet to the network since the channel broke");
                                 break 'message_receive_loop
                             }
@@ -455,7 +451,7 @@ impl ConnectionHandle {
                             }
 
                             Err(_channel_severed) => {
-                                conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
+                                conditional_faulting(&connection_handle_mutator.connection_state,
                                     "Unable to transmit packet to the network since the channel broke");
                                 break 'message_receive_loop
                             }
@@ -463,10 +459,10 @@ impl ConnectionHandle {
                     },
 
                     // Send keep alive periodically.
-                    recv(tick(Duration::from_millis(10))) -> _ => {
+                    recv(keep_alive_period) -> _ => {
                         if connection_status.is_connected() {
                             if let Err(_channel_severed) = keep_alive_sender.send(TimedMessage::of(KeepAlive)) {
-                                conditional_faulting(&connection_handle_mutator.connection_state, &faulted,
+                                conditional_faulting(&connection_handle_mutator.connection_state,
                                     "Unable to send KeepAlive packet since the channel broke");
                                 break 'message_receive_loop
                             }

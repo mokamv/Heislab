@@ -4,10 +4,10 @@ use crate::connection::client_pool::connection_error::{ClientPoolError, ErrorKin
 use crate::connection::connection_handle::handle::{ConnectionHandle, ConnectionIdentifier};
 use crate::messages::Message::Authenticated;
 use crate::messages::{Message, TimedMessage};
-use crate::program_fault::{program_set_to_faulted, Faulted};
 use crossbeam_channel::Receiver;
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
+use faulted::set_to_faulted;
 
 pub enum Target {
     All,
@@ -35,9 +35,9 @@ pub struct ClientPool {
 }
 
 impl ClientPool {
-    pub fn new(faulted: &Faulted, logger: ReliableLogSender, max_client_nb: usize) -> Self {
+    pub fn new(logger: ReliableLogSender, max_client_nb: usize) -> Self {
         let mut pool = Self {
-            shared_pool: Arc::new(Mutex::new(ClientPoolShared::new(faulted, logger, max_client_nb))),
+            shared_pool: Arc::new(Mutex::new(ClientPoolShared::new(logger, max_client_nb))),
         };
 
         for i in 0..max_client_nb {
@@ -79,29 +79,27 @@ struct ClientPoolShared {
     max_client_nb: usize,
     clients: Vec<Client>,
     logger: ReliableLogSender,
-    faulted: Faulted,
     receiver: Option<Receiver<ClientMessage>>,
 }
 
 impl ClientPoolShared {
-    fn new(faulted: &Faulted, logger: ReliableLogSender, managed_clients: usize) -> Self {
+    fn new(logger: ReliableLogSender, managed_clients: usize) -> Self {
         Self {
             has_started: false,
             max_client_nb: managed_clients,
             clients: Vec::with_capacity(managed_clients),
-            faulted: faulted.clone(),
             logger,
             receiver: None,
         }
     }
     fn with_client_id(&mut self, client_id: ConnectionIdentifier) {
         if self.has_started {
-            program_set_to_faulted(&self.faulted, "You cannot add clients after starting aggregation");
+            set_to_faulted("You cannot add clients after starting aggregation");
             return;
         }
 
         if self.clients.len() >= self.max_client_nb {
-            program_set_to_faulted(&self.faulted, "You cannot add more clients");
+            set_to_faulted("You cannot add more clients");
             return;
         }
 
@@ -109,8 +107,7 @@ impl ClientPoolShared {
             Client {
                 identifier: client_id,
                 connection: Arc::new(Mutex::new(ConnectionHandle::new_server_connection_handler(
-                    self.logger.clone_with_new_prefix(format!("[ClientPool][{client_id}][TCP]")),
-                    &self.faulted
+                    self.logger.clone_with_new_prefix(format!("[ClientPool][{client_id}][TCP]"))
                 ))),
             }
         );
@@ -118,7 +115,7 @@ impl ClientPoolShared {
 
     fn start(&mut self) {
         if self.has_started {
-            program_set_to_faulted(&self.faulted, "Client pool aggregation has already started.");
+            set_to_faulted("Client pool aggregation has already started.");
             return;
         }
 
@@ -126,7 +123,6 @@ impl ClientPoolShared {
         self.receiver = Some(
             MessageAggregator::init_message_aggregation(
                 ClientReceiver::from_clients(&self.clients),
-                &self.faulted
             )
         );
     }

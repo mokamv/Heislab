@@ -1,15 +1,15 @@
 use crate::connection::client_pool::client_pool::Client;
 use crate::connection::connection_handle::handle::ConnectionIdentifier;
 use crate::messages::Message;
-use crate::program_fault::Faulted;
 use crossbeam_channel::{unbounded, Receiver, RecvError, Select, SendError, Sender};
 use std::thread::spawn;
 use std::time::Duration;
+use faulted::is_faulted;
 
 #[derive(Debug)]
 pub struct ClientMessage {
     pub identifier: ConnectionIdentifier,
-    pub message: Message
+    pub content: Message
 }
 
 struct AggregatedReceiver {
@@ -44,8 +44,7 @@ pub(super) struct MessageAggregator<'a> {
     global_message_sender: Sender<ClientMessage>
 }
 impl<'a> MessageAggregator<'a> {
-    pub(super) fn init_message_aggregation(clients_receiver: Vec<ClientReceiver>, faulted: &Faulted) -> Receiver<ClientMessage> {
-        let faulted = faulted.clone();
+    pub(super) fn init_message_aggregation(clients_receiver: Vec<ClientReceiver>) -> Receiver<ClientMessage> {
         let (global_message_sender, global_message_receiver) = unbounded();
 
         spawn(move || {
@@ -64,7 +63,7 @@ impl<'a> MessageAggregator<'a> {
                 global_message_sender,
             };
 
-            while !*faulted.lock().unwrap() {
+            while !is_faulted() {
                 if let
                     Err(AggregatorError::SeveredGlobalAggregator)
                     | Err(AggregatorError::NoReceiver) = aggregator.try_select() { break; }
@@ -99,7 +98,7 @@ impl<'a> MessageAggregator<'a> {
 
                 Ok(self.global_message_sender.send(ClientMessage {
                     identifier: aggregated_receiver.internal_client_identifier,
-                    message,
+                    content: message,
                 })?)
             }
             Err(_timeout_error) => Err(AggregatorError::AggregationTimeout)

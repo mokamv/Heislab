@@ -12,21 +12,18 @@ use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::Instant;
 use ControllerState::Master;
+use faulted::{is_faulted, set_to_faulted};
 use log::LogLevel;
 
 pub fn listen_for_controller_loop(
-    connection_handle_mutator: ConnectionHandleMutator,
-    faulted: &Arc<Mutex<bool>>,
+    connection_handle_mutator: ConnectionHandleMutator
 ) {
     let temp_logger = connection_handle_mutator.logger().clone();
-    let faulted = faulted.clone();
 
     let mut bind_retry_count = 0u32;
     spawn(move || {
         'unbound: while bind_retry_count < BIND_MAX_RETRY {
-            if *faulted.lock().unwrap() {
-                break 'unbound;
-            }
+            if is_faulted() { break 'unbound; }
 
             match udp_socket_sharing_port(UDP_LISTEN_ADDR) {
                 Ok(udp_socket) => {
@@ -44,7 +41,7 @@ pub fn listen_for_controller_loop(
                     let mut last_udp_frame_instant = Instant::now();
 
                     'while_bound: loop {
-                        if *faulted.lock().unwrap() { break 'unbound; };
+                        if is_faulted() { break 'unbound; };
                         if !try_handling_udp_packet(&udp_socket, &connection_handle_mutator, &mut last_udp_frame_instant) {
                             break 'while_bound;
                         };
@@ -69,7 +66,7 @@ pub fn listen_for_controller_loop(
         }
 
         temp_logger.send("Cannot bind to UDP", LogLevel::ERROR);
-        *faulted.lock().unwrap() = true;
+        set_to_faulted("Cannot bind to UDP");
     });
 }
 

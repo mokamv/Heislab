@@ -16,18 +16,16 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::Instant;
+use faulted::{is_faulted, set_to_faulted};
 use log::log_client::ReliableLogSender;
 use log::LogLevel;
 
 pub fn init_udp_broadcasting(
     tcp_bound_to: SocketAddr,
     state: ControllerStateNotifier,
-    faulted: &Arc<Mutex<bool>>,
     id: u8,
     logger: ReliableLogSender,
 ) {
-    let faulted = faulted.clone();
-
     logger.send(
         "Starting broadcasting TCP Socket address for clients to use over UDP",
         LogLevel::INFO,
@@ -45,9 +43,7 @@ pub fn init_udp_broadcasting(
                         retry_counter = 0;
 
                         'broadcast_loop: loop {
-                            if *faulted.lock().unwrap() {
-                                break 'binding_loop;
-                            }
+                            if is_faulted() { break 'binding_loop; }
 
                             match udp_socket.send_to(
                                 &ControllerAddress {
@@ -68,45 +64,40 @@ pub fn init_udp_broadcasting(
                     retry_counter += 1;
                 }
             }
-            if *faulted.lock().unwrap() {
-                break 'binding_loop;
-            }
+            if is_faulted() { break 'binding_loop; }
             sleep(BIND_RETRY_PERIOD)
         }
 
-        if !*faulted.lock().unwrap() {
+        if !is_faulted() {
+            set_to_faulted("Failed to broadcast the TCP socket, this is a fatal error");
             logger.send(
                 "Failed to broadcast the TCP socket, this is a fatal error",
                 LogLevel::ERROR,
             );
         }
-
-        *faulted.lock().unwrap() = true;
     });
 }
 
 pub fn init_controller_tcp_listening(
     controller_state: ControllerStateNotifier,
     controller_link: ControllerLink,
-    faulted: &Arc<Mutex<bool>>,
     client_pool: &ClientPool,
     logger: ReliableLogSender,
 ) -> SocketAddr {
     let listener = TcpListener::bind(&SERVER_TCP_ADDRESSES[..]).unwrap();
     let listener_bound_to = listener.local_addr().unwrap();
 
-    let faulted = faulted.clone();
     let client_pool = client_pool.clone();
 
     spawn(move || {
-        'client_accept: while !*faulted.lock().unwrap() {
+        'client_accept: while !is_faulted() {
             match listener.accept() {
                 Ok((stream, address)) => {
                     logger.send(
                         &format!("Received connection from {}", address),
                         LogLevel::DEBUG,
                     );
-                    handle_new_connection(stream, &controller_state, &controller_link, &logger, &faulted, &client_pool);
+                    handle_new_connection(stream, &controller_state, &controller_link, &logger, &client_pool);
                 }
                 Err(connection_error) => match connection_error.kind() {
                     ErrorKind::WouldBlock => {}
@@ -116,7 +107,7 @@ pub fn init_controller_tcp_listening(
                 },
             };
         }
-        *faulted.lock().unwrap() = true;
+        set_to_faulted("TcpListener has been severed");
     });
 
     listener_bound_to
@@ -127,11 +118,9 @@ fn handle_new_connection(
     controller_state_notifier: &ControllerStateNotifier,
     controller_link: &ControllerLink,
     logger: &ReliableLogSender,
-    faulted: &Arc<Mutex<bool>>,
-    client_pool: &ClientPool,
+    client_pool: &ClientPool
 ) {
     let logger = logger.clone();
-    let faulted = faulted.clone();
 
     let controller_state_notifier = controller_state_notifier.clone();
     let controller_link = controller_link.clone();
@@ -140,7 +129,7 @@ fn handle_new_connection(
     spawn(move || {
         // Generate a temporary connection
         let temporary_handle =
-            ConnectionHandle::new_temporary_connection_handler(stream, logger.clone(), &faulted);
+            ConnectionHandle::new_temporary_connection_handler(stream, logger.clone());
 
         // Handle the identification process
         let identification_result

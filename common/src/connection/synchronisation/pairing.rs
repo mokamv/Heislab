@@ -4,7 +4,6 @@ use crate::connection::controller_state::{ControllerState, ControllerStateNotifi
 use crate::connection::synchronisation::controller_link::ControllerLink;
 use crate::messages::Message::{ControllerAuth, ControllerCurrentState};
 use crate::messages::{Message, TimedMessage};
-use crate::program_fault::Faulted;
 use crossbeam_channel::{select_biased, Receiver};
 use std::cmp::Ordering;
 use std::thread::spawn;
@@ -19,8 +18,7 @@ impl BackupPairing {
     pub fn new(
         controller_id: u8,
         client_pool: ClientPool,
-        logger: ReliableLogSender,
-        faulted: &Faulted
+        logger: ReliableLogSender
     ) -> Self {
         let (controller_state, controller_state_recv)
             = ControllerStateNotifier::new(
@@ -31,8 +29,7 @@ impl BackupPairing {
         let controller_link = ControllerLink::new(
             controller_state.clone(),
             client_pool,
-            logger,
-            faulted
+            logger
         );
 
         let mut process = Self { controller_link, controller_state };

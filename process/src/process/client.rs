@@ -1,5 +1,7 @@
-use crossbeam_channel::{select, Receiver, RecvError, Sender};
+use std::time::Duration;
+use crossbeam_channel::{select, tick, Receiver, RecvError, Sender};
 use common::messages::{Message, TimedMessage};
+use common::messages::Message::GotoFloor;
 use crate::elevator::client::elevator_interaction::ElevatorInteraction;
 use crate::process::common::Process;
 
@@ -17,6 +19,9 @@ impl Process {
             message_sender,
             message_receiver,
         };
+
+        let mut floor = 0;
+        let ping = tick(Duration::from_millis(50));
 
         println!("Elevator started");
         loop {
@@ -42,6 +47,12 @@ impl Process {
                 },
                 recv(client_state.elevator_control.event_channel.close_door_rx) -> _ => {
                     // elevator_controller.state.handle_close_door();
+                },
+                recv(ping) -> _ => {
+                    if client_state.is_auth {
+                        client_state.message_sender.send(TimedMessage::of(GotoFloor {go_to_floor: floor})).unwrap();
+                        floor += 1;
+                    }
                 }
             }
         }

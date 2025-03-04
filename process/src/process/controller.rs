@@ -4,6 +4,7 @@ use crossbeam_channel::select;
 use common::connection::client_pool::client_pool::ClientPool;
 use common::connection::controller_state::ControllerState;
 use common::connection::synchronisation::pairing::BackupPairing;
+use faulted::{is_faulted, set_to_faulted};
 use log::LogLevel;
 use crate::process::common::Process;
 
@@ -11,10 +12,9 @@ impl Process {
     pub(super) fn controller_task(&mut self, mut client_pool: ClientPool, backup_pairing: BackupPairing) {
         let logger = self.logger.get_sender(format!("[{}][MAIN]", id()));
         let client_messages = client_pool.take_message_channel();
-        let faulted = self.faulted.clone();
 
         spawn(move || {
-            while !*faulted.lock().unwrap() {
+            while !is_faulted() {
                 select! {
                     recv(client_messages) -> message => {
                         if backup_pairing.current_state() == ControllerState::Master {
@@ -30,7 +30,7 @@ impl Process {
             }
 
             logger.send("An error occurred\n\n\n", LogLevel::ERROR);
-            *faulted.lock().unwrap() = true;
+            set_to_faulted("Controller task failed");
         });
     }
 }

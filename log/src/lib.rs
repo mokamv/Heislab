@@ -340,6 +340,7 @@ pub mod log_client {
     use std::sync::{Arc, Mutex, Weak};
     use std::thread::{sleep, spawn, JoinHandle};
     use crossbeam_channel::{unbounded, Sender};
+    use faulted::is_faulted;
     use crate::log_message::LogMessage;
     use crate::{LogLevel, CONNECTION_RETRY, DEAD_LOGGER_PURGE_PERIOD, LOG_SERVER_TCP_ADDRESS};
 
@@ -348,9 +349,9 @@ pub mod log_client {
     }
 
     impl Logger {
-        pub fn init(faulted: &Arc<Mutex<bool>>) -> Self {
+        pub fn init() -> Self {
             Self {
-                logger_inst: Arc::new(LoggerImpl::init(faulted)),
+                logger_inst: Arc::new(LoggerImpl::init()),
             }
         }
 
@@ -403,25 +404,24 @@ pub mod log_client {
     }
 
     impl LoggerImpl {
-        fn init(faulted: &Arc<Mutex<bool>>) -> Self {
-            let logger = Self::with_logging_loop(&faulted);
+        fn init() -> Self {
+            let logger = Self::with_logging_loop();
 
-            logger.socket_liveliness_loop(&faulted);
-            logger.purge_dead_loggers_loop(&faulted);
+            logger.socket_liveliness_loop();
+            logger.purge_dead_loggers_loop();
 
             logger
         }
 
-        fn with_logging_loop(faulted: &Arc<Mutex<bool>>) -> Self {
+        fn with_logging_loop() -> Self {
             let (logging_tx, logging_rx) = unbounded::<LogMessage>();
             let connect_socket: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
 
             let mut log_queue: VecDeque<LogMessage> = VecDeque::with_capacity(128);
-            let faulted = faulted.clone();
             let sync_socket = connect_socket.clone();
             let sync_thread = spawn(move || {
                 'socket_listener: loop {
-                    let is_buffer_empty = Self::try_send_from_buffer(&mut log_queue, &sync_socket, &faulted);
+                    let is_buffer_empty = Self::try_send_from_buffer(&mut log_queue, &sync_socket);
 
                     match logging_rx.recv() {
                         Ok(mut message_to_log) => {
@@ -430,7 +430,7 @@ pub mod log_client {
                             }
 
                             if is_buffer_empty {
-                                Self::try_send_channel_message(&mut log_queue, message_to_log, &sync_socket, &faulted)
+                                Self::try_send_channel_message(&mut log_queue, message_to_log, &sync_socket)
                             } else {
                                 Self::store_channel_message(&mut log_queue, message_to_log);
                             }
@@ -439,7 +439,7 @@ pub mod log_client {
                     }
                 }
 
-                Self::try_send_from_buffer(&mut log_queue, &sync_socket, &Arc::new(Mutex::new(false)));
+                Self::try_send_from_buffer(&mut log_queue, &sync_socket);
             });
 
             Self {
@@ -450,13 +450,12 @@ pub mod log_client {
             }
         }
 
-        fn socket_liveliness_loop(&self, faulted: &Arc<Mutex<bool>>) {
-            let faulted = faulted.clone();
+        fn socket_liveliness_loop(&self) {
             let connect_socket = self.connect_socket.clone();
 
             spawn(move || {
                 loop {
-                    if *faulted.lock().unwrap() { break };
+                    if is_faulted() { break };
 
                     let mut socket_lock = connect_socket.lock().unwrap();
                     if socket_lock.is_none() {
@@ -474,13 +473,12 @@ pub mod log_client {
             });
         }
 
-        fn purge_dead_loggers_loop(&self, faulted: &Arc<Mutex<bool>>) {
-            let faulted = faulted.clone();
+        fn purge_dead_loggers_loop(&self) {
             let emitted_senders = self.emitted_senders.clone();
 
             spawn(move || {
                 loop {
-                    if *faulted.lock().unwrap() { break };
+                    if is_faulted() { break };
 
                     let mut emitted_senders = emitted_senders.lock().unwrap();
                     emitted_senders.retain(|logger| {
@@ -500,8 +498,7 @@ pub mod log_client {
 
         fn try_send_from_buffer(
             log_queue: &mut VecDeque<LogMessage>,
-            socket: &Arc<Mutex<Option<TcpStream>>>,
-            faulted: &Arc<Mutex<bool>>
+            socket: &Arc<Mutex<Option<TcpStream>>>
         ) -> bool {
             // Do nothing when `log_queue` is empty
             if log_queue.is_empty() { return true; }
@@ -513,7 +510,7 @@ pub mod log_client {
             let mut socket = socket_lock.take().unwrap();
 
             while !log_queue.is_empty() {
-                if *faulted.lock().unwrap() { break };
+                if is_faulted() { break };
 
                 match socket.write(&log_queue.pop_front().unwrap().as_bytes().expect("TODO")) { //TODO ERROR HANDLING
                     Ok(0) | Err(_) => { return false },
@@ -528,10 +525,9 @@ pub mod log_client {
         fn try_send_channel_message(
             log_queue: &mut VecDeque<LogMessage>,
             msg_to_log: LogMessage,
-            socket: &Arc<Mutex<Option<TcpStream>>>,
-            faulted: &Arc<Mutex<bool>>
+            socket: &Arc<Mutex<Option<TcpStream>>>
         ) {
-            if *faulted.lock().unwrap() {
+            if is_faulted() {
                 Self::store_channel_message(log_queue, msg_to_log);
                 return;
             }

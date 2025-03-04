@@ -6,3 +6,4 @@ edition = "2021"
 libc = "0.2.169"
 crossbeam-channel = "0.5.14"
 log = { path = "../log" }
+faulted = { path = "../faulted" }

@@ -7,27 +7,25 @@ use crate::connection::controller_state::ControllerStateNotifier;
 use crate::connection::unix_socket::udp_socket_sharing_port;
 use crate::messages::Message::ControllerAddress;
 use crate::messages::{Message, DEFAULT_MESSAGE, MESSAGE_SIZE};
+use faulted::{is_faulted, set_to_faulted};
+use log::LogLevel;
 use std::io::ErrorKind;
 use std::net::UdpSocket;
-use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::Instant;
-use log::LogLevel;
 
 pub fn listen_and_synchronize(
     connection_handle_mutator: ConnectionHandleMutator,
     controller_state: ControllerStateNotifier,
-    mut client_pool: ClientPool,
-    faulted: &Arc<Mutex<bool>>,
+    mut client_pool: ClientPool
 ) {
     let temp_logger = connection_handle_mutator.logger().clone();
-    let faulted = faulted.clone();
 
     let mut bind_retry_count = 0u32;
     spawn(move || {
         'unbound: while bind_retry_count < BIND_MAX_RETRY {
 
-            if *faulted.lock().unwrap() { break 'unbound; }
+            if is_faulted() { break 'unbound; }
 
             match udp_socket_sharing_port(UDP_LISTEN_ADDR) {
                 Ok(udp_socket) => {
@@ -44,7 +42,7 @@ pub fn listen_and_synchronize(
                     let mut last_controller_message_instant = Instant::now();
 
                     'while_bound: loop {
-                        if *faulted.lock().unwrap() { break 'unbound; };
+                        if is_faulted() { break 'unbound; };
 
                         if !try_handling_udp_packet(
                             &controller_state,
@@ -75,7 +73,7 @@ pub fn listen_and_synchronize(
         }
 
         temp_logger.send("Cannot bind to UDP", LogLevel::ERROR);
-        *faulted.lock().unwrap() = true;
+        set_to_faulted("Cannot bind to UDP");
     });
 }
 

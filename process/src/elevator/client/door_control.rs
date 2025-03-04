@@ -1,5 +1,4 @@
-use crossbeam_channel as cbc;
-use crossbeam_channel::{select, Receiver, Sender};
+use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
@@ -22,9 +21,9 @@ struct DoorState {
 impl DoorControl {
     pub fn new() -> (DoorControl, Receiver<()>) {
 
-        let (close_door_tx, close_door_rx) = cbc::unbounded::<()>();
-        let (open_door_tx, open_door_rx) = cbc::unbounded::<()>();
-        let (obstruction_tx, obstruction_rx) = cbc::unbounded::<bool>();
+        let (close_door_tx, close_door_rx) = unbounded::<()>();
+        let (open_door_tx, open_door_rx) = unbounded::<()>();
+        let (obstruction_tx, obstruction_rx) = unbounded::<bool>();
 
         let door_control = DoorControl {
             state: DoorState {

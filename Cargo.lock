@@ -7,6 +7,7 @@ name = "common"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "faulted",
  "libc",
  "log",
 ]
@@ -35,6 +36,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "faulted"
+version = "0.1.0"
+
+[[package]]
 name = "libc"
 version = "0.2.170"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -45,6 +50,7 @@ name = "log"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "faulted",
 ]
 
 [[package]]
@@ -54,5 +60,6 @@ dependencies = [
  "common",
  "crossbeam-channel",
  "driver-rust",
+ "faulted",
  "log",
 ]

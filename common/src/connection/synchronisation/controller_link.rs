@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use log::log_client::ReliableLogSender;
 use crate::connection::client_pool::client_pool::ClientPool;
 use crate::connection::controller_state::ControllerStateNotifier;
-use crate::program_fault::Faulted;
 
 pub struct ControllerLink {
     handle: Arc<Mutex<ConnectionHandle>>,
@@ -41,15 +40,13 @@ impl ControllerLink {
     pub(crate) fn new(
         controller_state_notifier: ControllerStateNotifier,
         client_pool: ClientPool,
-        logger: ReliableLogSender,
-        faulted: &Faulted
+        logger: ReliableLogSender
     ) -> Self {
 
         let backup_handle = ConnectionHandle::new_backup_connection_handler(
             controller_state_notifier,
             client_pool,
-            logger,
-            faulted
+            logger
         );
 
         Self {
