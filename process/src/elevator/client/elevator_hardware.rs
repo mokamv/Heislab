@@ -45,11 +45,11 @@ impl ElevatorHardware {
 
 impl ElevatorHardware {
     pub fn go_to_floor(&mut self, target: u8) -> CabinState {
-        debug_assert!(self.state.cabin.is_idle());
         self.state.target = Some(target);
 
-        let direction = self.state.cabin.get_direction_to(target);
-        let from_floor = self.state.cabin.get_current_floor();
+        let from_floor = self.state.cabin.get_current_floor_relative_to(target);
+        let direction = self.state.cabin.get_direction_relative_to(target);
+
         let to_floor = match direction {
             MotorDirection::Stop => return self.reach_target(),
             MotorDirection::Down => from_floor - 1,
@@ -108,6 +108,7 @@ impl ElevatorHardware {
     }
 
     pub fn handle_close_door(&mut self) -> CabinState {
+        debug_assert!(self.state.cabin.is_door_open());
         self.elevator.door_light(false);
         self.state.cabin = CabinState::DoorClose { current_floor: self.state.cabin.get_current_floor() };
         self.state.cabin

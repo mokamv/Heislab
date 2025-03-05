@@ -65,7 +65,7 @@ impl CurrentService {
             return false
         }
 
-        let current_direction = self.state.get_direction_to(current_request.target());
+        let current_direction = self.state.get_direction_relative_to(current_request.target());
         let current_floor = self.state.get_current_floor();
 
         let is_new_request_direction_ok = match new_request {

@@ -1,5 +1,7 @@
 use driver_rust::elevio::elev::{CallType, MotorDirection};
-use std::cmp::Ordering;
+use std::cmp::{max, Ordering};
+
+use libc::abs;
 use CabinState::DoorClose;
 use crate::data_struct::CabinState::{Between, DoorOpen};
 use crate::data_struct::CallRequest::{Cab, Hall};
@@ -135,8 +137,8 @@ impl CabinState {
         } else { false }
     }
 
-    pub fn is_idle(&self) -> bool {
-        if let DoorClose { .. } = *self {
+    pub fn is_door_open(&self) -> bool {
+        if let DoorOpen { .. } = *self {
             true
         } else { false }
     }
@@ -151,6 +153,24 @@ impl CabinState {
         }
     }
 
+    pub fn get_current_floor_relative_to(&self, target: u8) -> u8 {
+        match *self {
+            DoorOpen { current_floor }
+            | DoorClose { current_floor} => current_floor,
+            Between { from_floor, to_floor } => {
+                let from_distance = (target as i32 - from_floor as i32).abs();
+                let to_distance = (target as i32 - to_floor as i32).abs();
+
+                match from_distance.cmp(&to_distance) {
+                    Ordering::Less => from_floor,
+                    Ordering::Equal => unreachable!(),
+                    Ordering::Greater => to_floor
+                }
+            }
+        }
+    }
+
+    #[deprecated]
     pub fn get_current_floor(&self) -> u8 {
         match *self {
             DoorOpen { current_floor }
@@ -159,18 +179,20 @@ impl CabinState {
         }
     }
 
-    pub fn get_direction_to(&self, to: u8) -> MotorDirection {
-        match self.get_current_floor().cmp(&to) {
+    pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
+        match self.get_current_floor_relative_to(to).cmp(&to) {
             Ordering::Less => MotorDirection::Up,
             Ordering::Equal => MotorDirection::Stop,
             Ordering::Greater => MotorDirection::Down
         }
     }
 
+    #[deprecated] // TODO ????
     pub fn get_direction_from_to(from: u8, to: u8) -> MotorDirection {
         Between { from_floor: from, to_floor: to }.get_direction()
     }
 
+    #[deprecated] // TODO ????
     pub fn get_direction(&self) -> MotorDirection {
         match self {
             DoorOpen { .. } | DoorClose { .. } => MotorDirection::Stop,
