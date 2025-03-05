@@ -44,21 +44,27 @@ impl ElevatorHardware {
 }
 
 impl ElevatorHardware {
-    pub fn go_to_floor(&mut self, target: u8) -> CabinState {
-        self.state.target = Some(target);
+    pub fn go_to_floor(&mut self, target: u8) -> Option<CabinState> {
+        match self.state.cabin {
+            CabinState::DoorOpen { .. } => { None }
+            CabinState::DoorClose { .. }
+            | CabinState::Between { .. } => {
+                self.state.target = Some(target);
 
-        let from_floor = self.state.cabin.get_current_floor_relative_to(target);
-        let direction = self.state.cabin.get_direction_relative_to(target);
+                let from_floor = self.state.cabin.get_current_floor_relative_to(target);
+                let direction = self.state.cabin.get_direction_relative_to(target);
 
-        let to_floor = match direction {
-            MotorDirection::Stop => return self.reach_target(),
-            MotorDirection::Down => from_floor - 1,
-            MotorDirection::Up => from_floor + 1
-        };
+                let to_floor = match direction {
+                    MotorDirection::Stop => return self.reach_target(),
+                    MotorDirection::Down => from_floor - 1,
+                    MotorDirection::Up => from_floor + 1
+                };
 
-        self.state.cabin = CabinState::Between { from_floor, to_floor };
-        self.elevator.motor_direction(direction);
-        self.state.cabin
+                self.state.cabin = CabinState::Between { from_floor, to_floor };
+                self.elevator.motor_direction(direction);
+                Some(self.state.cabin)
+            }
+        }
     }
 
     pub fn init_if_is_not_yet(&mut self) {
@@ -75,46 +81,46 @@ impl ElevatorHardware {
 }
 
 impl ElevatorHardware {
-    fn reach_target(&mut self) -> CabinState {
+    fn reach_target(&mut self) -> Option<CabinState> {
         self.elevator.motor_direction(MotorDirection::Stop);
         self.elevator.door_light(true);
         self.door_control.open_door();
         self.state.cabin = CabinState::DoorOpen { current_floor: self.state.target.unwrap() };
         self.state.target = None;
-        self.state.cabin
+        Some(self.state.cabin)
     }
 
-    fn reach_idle(&mut self, floor: u8) -> CabinState {
+    fn reach_idle(&mut self, floor: u8) -> Option<CabinState> {
         self.elevator.motor_direction(MotorDirection::Stop);
         self.state.target = None;
         self.state.cabin = CabinState::DoorClose { current_floor: floor };
-        self.state.cabin
+        Some(self.state.cabin)
     }
 
-    fn reach_non_target_floor(&mut self) -> CabinState {
+    fn reach_non_target_floor(&mut self) -> Option<CabinState> {
         self.state.cabin.increment_between();
-        self.state.cabin
+        Some(self.state.cabin)
     }
 }
 
 impl ElevatorHardware {
-    pub fn handle_event(&mut self, event: ElevatorEvent) -> CabinState {
+    pub fn handle_event(&mut self, event: ElevatorEvent) -> Option<CabinState> {
         match event {
-            ElevatorEvent::CallButton { .. } => self.state.cabin, // Do nothing
+            ElevatorEvent::CallButton { .. } => Some(self.state.cabin), // Do nothing
             ElevatorEvent::FloorSensor { floor } => self.handle_floor_sensor(floor),
             ElevatorEvent::Obstruction { obstructed } => self.handle_obstruction(obstructed),
-            ElevatorEvent::StopButton { .. } => self.state.cabin // TODO IMPLEMENT
+            ElevatorEvent::StopButton { .. } => Some(self.state.cabin) // TODO IMPLEMENT
         }
     }
 
-    pub fn handle_close_door(&mut self) -> CabinState {
+    pub fn handle_close_door(&mut self) -> Option<CabinState> {
         debug_assert!(self.state.cabin.is_door_open());
         self.elevator.door_light(false);
         self.state.cabin = CabinState::DoorClose { current_floor: self.state.cabin.get_current_floor() };
-        self.state.cabin
+        Some(self.state.cabin)
     }
 
-    fn handle_floor_sensor(&mut self, floor: u8) -> CabinState {
+    fn handle_floor_sensor(&mut self, floor: u8) -> Option<CabinState> {
         match self.state.target {
             None => self.reach_idle(floor),
             Some(target_floor) => {
@@ -124,8 +130,8 @@ impl ElevatorHardware {
         }
     }
 
-    fn handle_obstruction(&mut self, obstructed: bool) -> CabinState {
+    fn handle_obstruction(&mut self, obstructed: bool) -> Option<CabinState> {
         self.door_control.obstruction(obstructed);
-        self.state.cabin
+        Some(self.state.cabin)
     }
 }

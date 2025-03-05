@@ -104,11 +104,22 @@ impl ClientState {
         self.send_updated_state(new_state);
     }
 
-    fn send_updated_state(&mut self, cabin_state: CabinState) {
-        if self.last_state != cabin_state {
-            self.last_state = cabin_state;
-            if self.is_auth {
-                self.message_sender.send(self.last_state);
+    fn send_updated_state(&mut self, cabin_state: Option<CabinState>) {
+        match cabin_state {
+            // Failure of last operation
+            None => {
+                // TODO SEND BACK A MESSAGE TO CONTROLLER ??????
+            }
+
+            // Success of last operation
+            Some(cabin_state) => {
+                if self.last_state != cabin_state {
+                    self.last_state = cabin_state;
+                    if self.is_auth {
+                        self.message_sender.send(self.last_state);
+                    }
+                }
+
             }
         }
     }
