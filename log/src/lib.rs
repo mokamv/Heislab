@@ -55,6 +55,7 @@ impl LogLevel {
 /// This module is used internally to ease the conversion to and from raw form, and also to facilitate filtering.
 mod log_message {
     use crate::LogLevel;
+    use std::mem::size_of;
 
     pub const MAX_MESSAGE_LENGTH: usize = 4096;
 
@@ -130,6 +131,7 @@ mod log_message {
 ///
 /// A utility function - [act_as_primary_logger] - is also provided, as an in-house middleware, that only redirect all logs to stdout
 pub mod log_server {
+    use std::mem::size_of;
     use std::cmp::min;
     use std::io::{Error, ErrorKind, Read};
     use std::net::{TcpListener, TcpStream};
@@ -161,9 +163,9 @@ pub mod log_server {
         /// A client has timed out will a message was being received, that is when the header is already received but not the entirety of the content.
         ClientMsgReadTimeout,
     }
-
     impl From<Error> for LogServerError {
         /// Convert I/O errors from sockets and streams to custom errors used by the module.
+
         fn from(value: Error) -> Self {
             match value.kind() {
                 ErrorKind::AddrInUse | ErrorKind::AddrNotAvailable => {
