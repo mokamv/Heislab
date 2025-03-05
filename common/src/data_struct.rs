@@ -162,9 +162,9 @@ impl CabinState {
                 let to_distance = (target as i32 - to_floor as i32).abs();
 
                 match from_distance.cmp(&to_distance) {
-                    Ordering::Less => from_floor,
+                    Ordering::Less => to_floor,
                     Ordering::Equal => unreachable!(),
-                    Ordering::Greater => to_floor
+                    Ordering::Greater => from_floor
                 }
             }
         }
