@@ -54,8 +54,30 @@ impl ElevatorPool {
                 println!("Disconnected from client");
             }
 
-            //TODO REMOVE TEST
+            //TODO REMOVE TEST & fix
             Message::ClientButtonCall { pressed } => {
+                
+                match pressed{
+                    Hall => {
+                        //put on hallight
+                        mut min cost = 128;
+                        mut min elevator_min_cost;
+                        for elevator in self.poll{
+                            elev_cost = elevator.ElevatorState.cost()
+                            if elev_cost < cost{
+                                cost = elev_cost
+                                elevator_min_cost = elevator; 
+                            }
+                        }
+                        //add message to elevator_min_cost queue
+                    }
+                    Cab => {
+                        //add to the respective elevator queue
+                    }
+                };
+
+
+
                 self.client_pool.send(
                     Target::Specific(identifier),
                     Message::LightControl { target: pressed, is_lit: true }
