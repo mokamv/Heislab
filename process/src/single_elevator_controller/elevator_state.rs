@@ -31,60 +31,6 @@ impl ElevatorState {
         calibrated
     }
 
-    fn cost(&mut self, call: CallButton) -> i8{
-        let weight: <i8> = 0; //max number is 127
-        
-        if self.current_service.state.get_current_floor() == call.floor || 
-           self.main_queue.iter().any(|call| call.floor == call.floor) {
-            weight = 127;
-        }
-        }
-        else if self.current_service.state.get_direction_from_to(){
-            weight = -1;
-        }
-        else {
-            weight = self.main_queue.len();
-        }
-
-        weight
-
-        // let weight_vec: Vec<i8> = vec![0; elevators_running as usize]; //max weight 127
-        // incr = 0;
-
-        // for state in state_vector.iter_mut() {
-        //     if ! state.is_running(){ //TODO: make a state struct that holds which elevators are working
-        //         weight_vec[incr] = 127
-        //     }
-        //     else if ! state.add_call(call){ //already in queue
-        //         weight_vec[incr] = -128
-        //         break;
-        //     }
-        //     else if state.current_service.state.get_direction_from_to(){
-        //         weight_vec[incr] = -1
-        //         break;
-        //         //TODO: check if the call is on the way
-        //         //TODO: check if right function
-        //     }
-        //     else {
-        //         weight_vec[incr] = state.main_queue.len() 
-        //     }
-        //     incr += 1;
-        // }
-        // return min of weight_vec index
-
-        // min_index = 0;
-        // min_value = 200;
-        // incr = 0
-        // for weight in weight_vec.iter_mut();
-        //     if weight < min_value{
-        //         min_index = 0;
-        //     }
-        //     incr += 1;
-
-        // min_index
-
-    }
-
     pub fn new_uncalibrated(door_control: DoorControl, elevator: Elevator) -> ElevatorState {
         let mut uncalibrated = Self::new(0, door_control, elevator);
         uncalibrated.current_service.state = State::Between(u8::MAX, 0);
