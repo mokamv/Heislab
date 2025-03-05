@@ -1,3 +1,4 @@
+use driver_rust::elevio::elev::MotorDirection;
 use common::connection::client_pool::client_pool::{ClientPool, Target};
 use common::connection::connection_handle::handle::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
@@ -76,6 +77,17 @@ impl ElevatorPool {
                             Target::Specific(identifier),
                             Message::LightControl { target: CallRequest::Cab { floor: current_floor } , is_lit: false }
                         ).unwrap();
+
+                        self.client_pool.send(
+                            Target::All,
+                            Message::LightControl { target: CallRequest::Hall { floor: current_floor, direction: MotorDirection::Down } , is_lit: false }
+                        ).unwrap();
+
+                        self.client_pool.send(
+                            Target::All,
+                            Message::LightControl { target: CallRequest::Hall { floor: current_floor, direction: MotorDirection::Up } , is_lit: false }
+                        ).unwrap();
+
                     }
                     CabinState::DoorClose { .. } => {}
                     CabinState::Between { .. } => {}

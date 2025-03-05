@@ -121,6 +121,7 @@ impl ElevatorHardware {
     }
 
     fn handle_floor_sensor(&mut self, floor: u8) -> Option<CabinState> {
+        self.elevator.floor_indicator(floor);
         match self.state.target {
             None => self.reach_idle(floor),
             Some(target_floor) => {
