@@ -6,10 +6,15 @@ pub mod process {
 
 pub mod elevator {
     pub mod client {
-        pub mod elevator_event;
-        pub mod elevator_interaction;
+        pub mod elevator_hardware;
 
         pub mod door_control;
+    }
+    
+    pub mod controller {
+        pub mod elevator_state;
+        pub mod current_service;
+        pub mod elevator_pool;
     }
 }
 

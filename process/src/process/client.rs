@@ -1,58 +1,46 @@
-use std::time::Duration;
-use crossbeam_channel::{select, tick, Receiver, RecvError, Sender};
-use common::messages::{Message, TimedMessage};
-use common::messages::Message::GotoFloor;
-use crate::elevator::client::elevator_interaction::ElevatorInteraction;
+use crate::elevator::client::elevator_hardware::ElevatorHardware;
 use crate::process::common::Process;
+use common::connection::connection_handle::message_sender::MessageSender;
+use common::data_struct::CabinState;
+use common::messages::Message;
+use crossbeam_channel::{after, select};
+use driver_rust::elevio::elev::ElevatorEvent;
+use std::time::Duration;
 
 const FLOOR_COUNT: u8 = 4;
 
 impl Process {
     pub(crate) fn client_task(&mut self) {
-        let message_sender = self.client_handle.take_sender();
+        let poll_period = Duration::from_millis(25);
+        let try_init_after = after(2 * poll_period);
+
+        let mut elevator_hw = ElevatorHardware::new("127.0.0.1:15657", FLOOR_COUNT, poll_period);
+
         let message_receiver = self.client_handle.take_receiver();
+        let (event_receiver, close_door_receiver) = elevator_hw.take_receivers();
 
         let mut client_state = ClientState {
             identifier: self.process_id,
-            elevator_control: ElevatorInteraction::new("127.0.0.1:15657", FLOOR_COUNT),
+            elevator_hw,
             is_auth: false,
-            message_sender,
-            message_receiver,
+            message_sender: self.client_handle.take_sender(),
+            last_state: Default::default(),
         };
-
-        let mut floor = 0;
-        let ping = tick(Duration::from_millis(50));
 
         println!("Elevator started");
         loop {
             select! {
-                recv(client_state.message_receiver) -> message => {
-                    client_state.handle_message(message);
+                recv(try_init_after) -> _ => client_state.elevator_hw.init_if_is_not_yet(),
+                recv(message_receiver) -> message => {
+                    let message = message.unwrap();
+                    client_state.handle_message_event(message);
                 },
-                recv(client_state.elevator_control.event_channel.call_button_rx) -> a => {
-                    let call_button = a.unwrap();
-                    // elevator_controller.state.handle_call_button(call_button);
+                recv(event_receiver) -> event => {
+                    let event = event.unwrap();
+                    client_state.handle_elevator_event(event);
                 },
-                recv(client_state.elevator_control.event_channel.floor_sensor_rx) -> a => {
-                    let floor = a.unwrap();
-                    // elevator_controller.state.handle_floor_sensor(floor)
-                },
-                recv(client_state.elevator_control.event_channel.stop_button_rx) -> a => {
-                    let is_pressed = a.unwrap();
-                    // elevator_controller.state.handle_stop(is_pressed);
-                },
-                recv(client_state.elevator_control.event_channel.obstruction_rx) -> a => {
-                    let is_obstructed = a.unwrap();
-                    // elevator_controller.state.handle_obstruction(is_obstructed);
-                },
-                recv(client_state.elevator_control.event_channel.close_door_rx) -> _ => {
-                    // elevator_controller.state.handle_close_door();
-                },
-                recv(ping) -> _ => {
-                    if client_state.is_auth {
-                        client_state.message_sender.send(TimedMessage::of(GotoFloor {go_to_floor: floor})).unwrap();
-                        floor += 1;
-                    }
+                recv(close_door_receiver) -> _ => {
+                    client_state.handle_close_door_event()
                 }
             }
         }
@@ -61,37 +49,67 @@ impl Process {
 
 struct ClientState {
     identifier: u8,
-    elevator_control: ElevatorInteraction,
     is_auth: bool,
-    message_sender: Sender<TimedMessage>,
-    message_receiver: Receiver<Message>
+    elevator_hw: ElevatorHardware,
+    message_sender: MessageSender,
+    last_state: CabinState,
 }
 
 
 impl ClientState {
-    pub fn handle_message(&mut self, message: Result<Message, RecvError>) {
+    fn handle_message_event(&mut self, message: Message) {
         match message {
-            Ok(message) => {
-                match message {
-                    Message::Connected => {
-                        self.is_auth = false;
-                        println!("Connected to server");
-                        self.message_sender.send(TimedMessage::of(Message::ClientAuth { client_id: self.identifier })).unwrap();
-                    }
-                    Message::Authenticated => {
-                        self.is_auth = true;
-                        println!("Identified to the server, starting online mode")
-                    }
-
-                    Message::Disconnected => {
-                        self.is_auth = false;
-                        println!("Disconnected from server, starting offline mode");
-                    }
-
-                    _ => {}
-                }
+            Message::Connected => {
+                self.is_auth = false;
+                println!("Connected to server");
+                self.message_sender.send(Message::ClientAuth { client_id: self.identifier });
             }
-            Err(_) => { todo!() }
+            Message::Authenticated => {
+                self.is_auth = true;
+                self.message_sender.send(self.last_state);
+                println!("Identified to the server, starting online mode")
+            }
+
+            Message::Disconnected => {
+                self.is_auth = false;
+                println!("Disconnected from server, starting offline mode");
+            }
+
+            Message::GotoFloor { go_to_floor } => {
+                let new_state = self.elevator_hw.go_to_floor(go_to_floor);
+                self.send_updated_state(new_state);
+            },
+
+            Message::LightControl { target, is_lit } => {
+                self.elevator_hw.call_button_light(target, is_lit);
+            },
+
+            _ => {}
+        }
+    }
+
+    fn handle_elevator_event(&mut self, elevator_event: ElevatorEvent) {
+        let new_state = self.elevator_hw.handle_event(elevator_event);
+        self.send_updated_state(new_state);
+
+        if self.is_auth {
+            self.message_sender.send(elevator_event);
+        } else {
+            //todo!("OFFLINE MODE");
+        }
+    }
+
+    fn handle_close_door_event(&mut self) {
+        let new_state = self.elevator_hw.handle_close_door();
+        self.send_updated_state(new_state);
+    }
+
+    fn send_updated_state(&mut self, cabin_state: CabinState) {
+        if self.last_state != cabin_state {
+            self.last_state = cabin_state;
+            if self.is_auth {
+                self.message_sender.send(self.last_state);
+            }
         }
     }
 }

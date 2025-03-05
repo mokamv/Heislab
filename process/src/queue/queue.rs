@@ -1,6 +1,7 @@
-use crate::queue::queue_element::{QueueElement, Request};
+use crate::queue::queue_element::{QueueElement};
 use std::cell::RefCell;
 use std::rc::Rc;
+use common::data_struct::CallRequest;
 
 pub struct Queue {
     head: Rc<RefCell<QueueElement>>,
@@ -12,8 +13,8 @@ pub struct Queue {
 impl Queue {
     pub(crate) fn new(limit: usize) -> Queue {
         Queue {
-            head: Rc::new(RefCell::new(QueueElement::default_req())),
-            tail: Rc::new(RefCell::new(QueueElement::default_req())),
+            head: Rc::new(RefCell::default()),
+            tail: Rc::new(RefCell::default()),
             size: 0,
             limit
         }
@@ -25,7 +26,7 @@ impl Queue {
     // fn size(&self) -> usize {
     //     self.size
     // }
-    pub(crate) fn pop(&mut self) -> Option<Request> {
+    pub(crate) fn pop(&mut self) -> Option<CallRequest> {
         match self.size {
             0 => None,
             1 => {
@@ -49,7 +50,7 @@ impl Queue {
         }
     }
 
-    pub(crate) fn peek(&self) -> Option<Request> {
+    pub(crate) fn peek(&self) -> Option<CallRequest> {
         if self.is_empty(){
             None
         } else {
@@ -57,7 +58,7 @@ impl Queue {
         }
     }
 
-    pub(crate) fn push_unique(&mut self, request: Request) -> bool {
+    pub(crate) fn push_unique(&mut self, request: CallRequest) -> bool {
         if self.size == self.limit {
             return false;
         }
@@ -84,7 +85,7 @@ impl Queue {
         true
     }
 
-    pub(crate) fn retain(&mut self, mut condition: impl FnMut(&Request) -> bool) -> Vec<Request> {
+    pub(crate) fn retain(&mut self, mut condition: impl FnMut(&CallRequest) -> bool) -> Vec<CallRequest> {
         let mut removed = Vec::new();
 
         let mut pointer = if self.is_empty() {
@@ -110,8 +111,8 @@ impl Queue {
                             // This situation means that the list is now empty
                             None => {
                                 pointer = None;
-                                self.head = Rc::new(RefCell::new(QueueElement::default_req()));
-                                self.tail = Rc::new(RefCell::new(QueueElement::default_req()));
+                                self.head = Rc::default();
+                                self.tail = Rc::default();
                             }
                             // This situation means that the next element become the head
                             Some(next_elem) => {
@@ -154,8 +155,8 @@ impl Queue {
     }
 
     fn clear(&mut self) {
-        self.head = Rc::new(RefCell::new(QueueElement::default_req()));
-        self.tail = Rc::new(RefCell::new(QueueElement::default_req()));
+        self.head = Rc::default();
+        self.tail = Rc::default();
         self.size = 0;
     }
 }
@@ -174,7 +175,7 @@ mod queue_tests {
     #[test]
     fn push_then_pop() {
         let mut queue = Queue::new(10);
-        let req = Request::Cab(8);
+        let req = CallRequest::Cab { floor: 8 };
         queue.push_unique(req.clone());
         assert_eq!(queue.is_empty(), false);
         assert_eq!(queue.pop(), Some(req));
@@ -184,7 +185,7 @@ mod queue_tests {
     #[test]
     fn push_peek_pop() {
         let mut queue = Queue::new(10);
-        let req = Request::Cab(8);
+        let req = CallRequest::Cab { floor: 8 };
         queue.push_unique(req.clone());
         assert_eq!(queue.is_empty(), false);
         assert_eq!(queue.peek(), Some(req.clone()));
@@ -196,8 +197,8 @@ mod queue_tests {
     #[test]
     fn push_push_peek_pop() {
         let mut queue = Queue::new(10);
-        let req1 = Request::Cab(8);
-        let req2 = Request::Cab(10);
+        let req1 = CallRequest::Cab { floor: 8 };
+        let req2 = CallRequest::Cab { floor: 10 };
 
         queue.push_unique(req1.clone());
         assert_eq!(queue.peek(), Some(req1.clone()));
@@ -209,8 +210,8 @@ mod queue_tests {
     #[test]
     fn push_push_retain_one() {
         let mut queue = Queue::new(10);
-        let req_retained = Request::Cab(8);
-        let req_removed = Request::Cab(10);
+        let req_retained = CallRequest::Cab { floor: 8 };
+        let req_removed = CallRequest::Cab { floor: 10 };
 
         queue.push_unique(req_retained.clone());
         queue.push_unique(req_removed.clone());
@@ -223,8 +224,8 @@ mod queue_tests {
     #[test]
     fn push_push_clear() {
         let mut queue = Queue::new(10);
-        let req1 = Request::Cab(8);
-        let req2 = Request::Cab(10);
+        let req1 = CallRequest::Cab { floor: 8 };
+        let req2 = CallRequest::Cab { floor: 10 };
 
         queue.push_unique(req1.clone());
         queue.push_unique(req2.clone());

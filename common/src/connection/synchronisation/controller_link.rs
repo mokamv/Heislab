@@ -8,6 +8,7 @@ use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
 use log::log_client::ReliableLogSender;
 use crate::connection::client_pool::client_pool::ClientPool;
+use crate::connection::connection_handle::message_sender::MessageSender;
 use crate::connection::controller_state::ControllerStateNotifier;
 
 pub struct ControllerLink {
@@ -16,7 +17,7 @@ pub struct ControllerLink {
 }
 
 impl ControllerLink {
-    pub(crate) fn take_sender(&self) -> Sender<TimedMessage> {
+    pub(crate) fn take_sender(&self) -> MessageSender {
         self.handle.lock().unwrap().take_sender()
     }
 }

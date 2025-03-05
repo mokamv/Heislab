@@ -1,14 +1,16 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::Instant;
-use Message::{Connected, ControllerAuth, Disconnected};
+use driver_rust::elevio::elev::{CallType, ElevatorEvent, MotorDirection};
+use Message::{ClientStopButton, Connected, ControllerAuth, Disconnected};
 use crate::connection::connection_handle::channel::{AliveStatus, AliveValue};
-use crate::messages::Message::{Authenticated, ClientAuth, ClientButtonCall, ClientObstructed, ClientReachFloor, GotoFloor, KeepAlive, LightControl, ControllerAddress, ControllerCurrentState};
+use crate::messages::Message::{Authenticated, ClientAuth, ClientButtonCall, ClientObstructed, ClientCabinState, ControllerAddress, ControllerCurrentState, GotoFloor, KeepAlive, LightControl};
 
 type RawMessage = [u8; MESSAGE_SIZE];
 pub const MESSAGE_SIZE: usize = 32;
 pub const DEFAULT_MESSAGE: [u8; MESSAGE_SIZE] = [0u8; MESSAGE_SIZE];
 use crate::connection::controller_state::ControllerState;
-use crate::messages::PhysicalButton::{CAB, HALL};
+use crate::data_struct::{CabinState, CallRequest};
+use crate::data_struct::CallRequest::{Cab, Hall};
 
 #[derive(Debug)]
 pub struct TimedMessage {
@@ -40,12 +42,13 @@ pub enum Message {
 
     // Client messages
     ClientObstructed { is_obstructed: bool },
-    ClientReachFloor { floor_reached: u8 },
-    ClientButtonCall { pressed: PhysicalButton },
+    ClientCabinState { cabin_state: CabinState },
+    ClientButtonCall { pressed: CallRequest },
+    ClientStopButton { is_pressed: bool },
 
     // Controller messages
     ControllerAddress { id: u8, state: ControllerState, address: SocketAddr },
-    LightControl { target: PhysicalButton, is_lit: bool },
+    LightControl { target: CallRequest, is_lit: bool },
     GotoFloor { go_to_floor: u8 },
 
     // Connection State flow
@@ -78,14 +81,18 @@ impl Message {
                 raw_message[1] = is_obstructed as u8
 
             },
-            ClientReachFloor { floor_reached } => {
+            ClientCabinState { cabin_state } => {
                 raw_message[0] = 2;
-                raw_message[1] = floor_reached
+                raw_message[1..4].copy_from_slice(&cabin_state.encode());
             },
             ClientButtonCall { pressed } => {
                 raw_message[0] = 3;
                 raw_message[1..4].copy_from_slice(&pressed.encode());
             },
+            ClientStopButton { is_pressed } => {
+                raw_message[0] = 4;
+                raw_message[1] = is_pressed as u8;
+            }
 
             // Controller encode
             ControllerAddress { id, state, address } => {
@@ -146,9 +153,9 @@ impl Message {
 
             // Client messages
             1 => ClientObstructed { is_obstructed: raw_message[1] != 0 },
-            2 => ClientReachFloor { floor_reached: raw_message[1] },
-            3 => ClientButtonCall { pressed: PhysicalButton::decode(&raw_message[1..4]) },
-
+            2 => ClientCabinState { cabin_state: CabinState::decode(&raw_message[1..4]) },
+            3 => ClientButtonCall { pressed: CallRequest::decode(&raw_message[1..4]) },
+            4 => ClientStopButton { is_pressed: raw_message[1] != 0 },
             
             // Controller messages
             128 => ControllerAddress {
@@ -169,7 +176,7 @@ impl Message {
                     }
                     _ => panic!("TODO")
                 } },
-            129 => LightControl { target: PhysicalButton::decode(&raw_message[1..4]), is_lit: raw_message[4] != 0 },
+            129 => LightControl { target: CallRequest::decode(&raw_message[1..4]), is_lit: raw_message[4] != 0 },
             130 => GotoFloor { go_to_floor: raw_message[1] },
 
 
@@ -187,9 +194,28 @@ impl Message {
             code => panic!("Bad message code received: {code}"),
         }
     }
+}
 
-    pub fn from_status(status: AliveStatus) -> Self {
-        match status.value() {
+impl From<ElevatorEvent> for Message {
+    fn from(value: ElevatorEvent) -> Self {
+        match value {
+            ElevatorEvent::CallButton { floor, call } => ClientButtonCall {
+                pressed: match call {
+                    CallType::HallUp => Hall { floor, direction: MotorDirection::Up },
+                    CallType::HallDown => Hall { floor, direction: MotorDirection::Down },
+                    CallType::Cab => Cab { floor }
+                }
+            },
+            ElevatorEvent::FloorSensor { .. } => KeepAlive, // Use keep alive as a non-message.
+            ElevatorEvent::Obstruction { obstructed } => ClientObstructed { is_obstructed: obstructed },
+            ElevatorEvent::StopButton { stopped } => ClientStopButton { is_pressed: stopped }
+        }
+    }
+}
+
+impl From<AliveStatus> for Message {
+    fn from(value: AliveStatus) -> Self {
+        match value.value() {
             AliveValue::Connected => Connected,
             AliveValue::Disconnected => Disconnected,
             AliveValue::ConnectedAndAuthenticated => Authenticated
@@ -197,36 +223,8 @@ impl Message {
     }
 }
 
-
-#[derive(Debug, Copy, Clone)]
-pub enum PhysicalButton {
-    HALL { floor: u8, direction_is_up: bool },
-    CAB { floor: u8 }
-}
-
-impl PhysicalButton {
-    fn encode(&self) -> [u8; 3] {
-        let mut message = [0u8; 3];
-        match self {
-            HALL { floor, direction_is_up } => {
-                message[0] = 0;
-                message[1] = *floor;
-                message[2] = *direction_is_up as u8;
-            }
-            CAB { floor } => {
-                message[0] = 1;
-                message[1] = *floor;
-
-            }
-        };
-        message
-    }
-
-    fn decode(raw_button: &[u8]) -> Self {
-        assert_eq!(raw_button.len(), 3);
-        match raw_button[0] {
-            0 => HALL { floor: raw_button[1], direction_is_up: raw_button[2] != 0 },
-            _ => CAB { floor: raw_button[1] }
-        }
+impl From<CabinState> for Message {
+    fn from(cabin_state: CabinState) -> Self {
+        ClientCabinState { cabin_state }
     }
 }

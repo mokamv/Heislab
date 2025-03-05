@@ -4,6 +4,7 @@ use crate::connection::connection_handle::channel::{AliveStatus, AliveStatusNoti
 use crate::connection::connection_handle::client_init::listen_for_controller_loop;
 use crate::connection::connection_handle::handle::ConnectionState::{Connected, Disconnected};
 use crate::connection::connection_handle::handle::MessageSendError::{HandleDisconnected, HandleKilled, KeepAliveTooSoon};
+use crate::connection::connection_handle::message_sender::MessageSender;
 use crate::connection::constants::{MESSAGE_POLLING_PERIOD, SEND_KEEP_ALIVE_PERIOD, TCP_TIMEOUT};
 use crate::connection::controller_state::ControllerStateNotifier;
 use crate::messages::Message::KeepAlive;
@@ -13,7 +14,6 @@ use faulted::{is_faulted, set_to_faulted};
 use log::log_client::ReliableLogSender;
 use log::LogLevel;
 use std::cmp::Ordering;
-use std::fmt::format;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::ops::{Deref, DerefMut};
@@ -211,8 +211,8 @@ impl ConnectionHandle {
     pub fn take_receiver(&mut self) -> Receiver<Message> {
         self.channels.take_receiver()
     }
-    pub fn take_sender(&mut self) -> Sender<TimedMessage> {
-        self.channels.take_sender()
+    pub fn take_sender(&mut self) -> MessageSender {
+        MessageSender::from(self.channels.take_sender())
     }
 
     pub(in super::super::super::connection) fn borrow_sender(&self) -> &Sender<TimedMessage> {
@@ -390,7 +390,7 @@ impl ConnectionHandle {
                         match status {
                             Ok(status) => {
                                 connection_status = status;
-                                if let Err(_channel_severed) = messages_read.send(Message::from_status(status)) {
+                                if let Err(_channel_severed) = messages_read.send(status.into()) {
                                     conditional_faulting(&connection_handle_mutator.connection_state,
                                         "Unable to send the status since the channel broke");
                                     break 'message_receive_loop

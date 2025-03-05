@@ -8,10 +8,11 @@ use driver_rust::elevio::poll::CallButton;
 use crate::single_elevator_controller::door_control::DoorControl;
 
 pub struct ElevatorState {
-    elevator: Elevator,
+    // elevator: Elevator,
     main_queue: Queue,
-    door_control: DoorControl,
+    // door_control: DoorControl,
     current_service: CurrentService,
+    is_connected: bool
 }
 
 impl ElevatorState {
@@ -187,137 +188,3 @@ impl ElevatorState {
     }
 }
 
-struct CurrentService {
-    request: Option<Request>,
-    state: State,
-    serviceable_request: Vec<Request>
-}
-
-impl CurrentService {
-    fn from(state: State) -> Self {
-        Self {
-            request: None,
-            state,
-            serviceable_request: vec![],
-        }
-    }
-
-    fn is_init(&self) -> bool {
-        self.request.is_some()
-    }
-
-    fn reset(&mut self) {
-        self.request = None
-    }
-
-    fn update_request(&mut self, request: Request) {
-        self.request = Some(request);
-    }
-
-    fn already_serviceable(&self, new_request: &Request) -> bool {
-        self.serviceable_request.contains(new_request)
-    }
-
-    fn is_current_request(&self, new_request: &Request) -> bool {
-        self.request.clone().unwrap().eq(new_request)
-    }
-
-    fn update_serviceable(&mut self, queue: &mut Queue) {
-        debug_assert!(self.is_init(), "The current service need to be initialized");
-        self.serviceable_request.clear();
-
-        let newly_serviceable = queue.retain(|request: &Request|
-            ! self.is_current_request(request) &&
-                ! self.already_serviceable(request) &&
-                ! self.is_serviceable(request));
-
-        for s_req in newly_serviceable {
-            if ! self.already_serviceable(&s_req)
-                && ! self.is_current_request(&s_req) {
-                self.add_to_serviceable(s_req);
-            }
-        }
-    }
-
-    fn is_serviceable(&self, new_request: &Request) -> bool {
-        let current_request = self.request.clone().unwrap();
-
-        debug_assert!(! self.already_serviceable(new_request), "An already serviceable request is not serviceable again");
-        debug_assert!(! self.is_current_request(new_request), "The current request is not serviceable again");
-
-        if self.is_final_floor(new_request.target()) {
-            return false
-        }
-
-        let current_direction = self.state.get_direction_to(current_request.target());
-        let current_floor = self.state.get_current_floor();
-
-        let is_new_request_direction_ok = match new_request {
-            Request::Cab(_) => true,
-            Request::Hall(_, direction) => current_direction.eq(direction)
-        };
-
-        is_new_request_direction_ok && match current_direction {
-            e::DIRN_UP => current_floor < new_request.target()
-                && new_request.target() < current_request.target(),
-            e::DIRN_DOWN => current_floor > new_request.target()
-                && new_request.target() > current_request.target(),
-            e::DIRN_STOP => false,
-            _ => panic!("Invalid state")
-        }
-    }
-
-    fn add_to_serviceable(&mut self, request: Request) {
-        debug_assert!(self.is_serviceable(&request), "This request is not serviceable");
-        self.serviceable_request.push(request);
-    }
-
-    fn does_stop(&self, floor: u8) -> bool {
-        let original_request = self.request.clone().unwrap();
-
-        if self.is_final_floor(floor) {
-            true
-        } else {
-            let serviceable_hall_req = Request::Hall(
-                floor,
-                State::get_direction_from_to(floor, original_request.target())
-            );
-            let serviceable_call_req = Request::Cab(floor);
-
-            for other_req in self.serviceable_request.iter() {
-                if serviceable_call_req.eq(other_req) || serviceable_hall_req.eq(other_req) {
-                    return true
-                }
-            }
-            false
-        }
-    }
-
-    fn is_final_floor(&self, floor: u8) -> bool {
-        self.request.clone().unwrap().target() == floor
-    }
-
-    fn remove_serviced(&mut self, floor: u8) -> Vec<Request> {
-        debug_assert!(!self.is_final_floor(floor), "Cannot removed serviced when the request is the final one");
-        debug_assert!(self.does_stop(floor), "Cannot remove serviced request when none were serviced.");
-
-        let original_request = self.request.clone().unwrap();
-        let mut serviced = Vec::new();
-
-        let serviceable_hall_req = Request::Hall(
-            floor,
-            State::get_direction_from_to(floor, original_request.target())
-        );
-        let serviceable_call_req = Request::Cab(floor);
-
-        let mut i = 0;
-        while i < self.serviceable_request.len() {
-            let other_req = self.serviceable_request.get(i).unwrap();
-            if *other_req == serviceable_call_req || *other_req == serviceable_hall_req {
-                serviced.push(self.serviceable_request.swap_remove(i));
-            }
-            i += 1;
-        }
-        serviced
-    }
-}

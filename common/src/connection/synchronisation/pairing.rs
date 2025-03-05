@@ -3,11 +3,11 @@ use crate::connection::controller_state::ControllerState::{Backup, Master, Maste
 use crate::connection::controller_state::{ControllerState, ControllerStateNotifier};
 use crate::connection::synchronisation::controller_link::ControllerLink;
 use crate::messages::Message::{ControllerAuth, ControllerCurrentState};
-use crate::messages::{Message, TimedMessage};
+use crate::messages::Message;
 use crossbeam_channel::{select_biased, Receiver};
+use log::log_client::ReliableLogSender;
 use std::cmp::Ordering;
 use std::thread::spawn;
-use log::log_client::ReliableLogSender;
 
 pub struct BackupPairing {
     controller_link: ControllerLink,
@@ -73,11 +73,12 @@ impl BackupPairing {
                         match new_state {
                             Ok(new_state) => {
                                 current_state = new_state;
-                                controller_sync_message_sender.send(TimedMessage::of(
+                                controller_sync_message_sender.send(
                                     ControllerCurrentState {
                                         id: controller_state.controller_id(),
                                         state: current_state
-                                    })).expect("TODO"); //TODO
+                                    }
+                                );
 
                                 //TODO BELOW
                                 match new_state {
@@ -95,18 +96,18 @@ impl BackupPairing {
                             Ok(controller_message) => {
                                 match controller_message {
                                     Message::Connected => {
-                                        controller_sync_message_sender.send(TimedMessage::of(
-                                            ControllerAuth {
+                                        controller_sync_message_sender.send(ControllerAuth {
                                                 controller_id: controller_state.controller_id()
-                                            })).expect("TODO") //TODO
+                                            }
+                                        )
                                     },
                                     Message::Disconnected => {println!("Disconnected")}, //TODO
                                     Message::Authenticated => {
-                                        controller_sync_message_sender.send(TimedMessage::of(
-                                            ControllerCurrentState {
+                                        controller_sync_message_sender.send(ControllerCurrentState {
                                                 id: controller_state.controller_id(),
                                                 state: current_state
-                                            })).expect("TODO") //TODO
+                                            }
+                                        )
                                     }
 
                                     ControllerCurrentState { state, id } => {

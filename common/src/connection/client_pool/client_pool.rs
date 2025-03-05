@@ -1,13 +1,13 @@
-use log::log_client::ReliableLogSender;
 use crate::connection::client_pool::aggregator::{ClientMessage, ClientReceiver, MessageAggregator};
 use crate::connection::client_pool::connection_error::{ClientPoolError, ErrorKind};
 use crate::connection::connection_handle::handle::{ConnectionHandle, ConnectionIdentifier};
 use crate::messages::Message::Authenticated;
 use crate::messages::{Message, TimedMessage};
 use crossbeam_channel::Receiver;
+use faulted::set_to_faulted;
+use log::log_client::ReliableLogSender;
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
-use faulted::set_to_faulted;
 
 pub enum Target {
     All,
@@ -50,6 +50,12 @@ impl ClientPool {
     fn with_client_id(&mut self, client_id: ConnectionIdentifier) -> &mut Self {
         self.shared_pool.lock().unwrap().with_client_id(client_id);
         self
+    }
+
+    pub fn client_identifiers(&self) -> Vec<ConnectionIdentifier> {
+        self.shared_pool.lock().unwrap().clients.iter().map(|x| {
+            x.identifier
+        }).collect()
     }
 
     pub fn start(self) -> Self {

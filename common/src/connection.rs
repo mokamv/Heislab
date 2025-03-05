@@ -17,6 +17,7 @@ pub mod connection_handle {
     pub mod handle;
     pub mod client_init;
     pub mod backup_init;
+    pub mod message_sender;
 }
 
 pub mod controller_state;

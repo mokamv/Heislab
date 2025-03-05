@@ -11,14 +11,13 @@ use crate::connection::synchronisation::controller_link::ControllerLink;
 use crate::connection::unix_socket::udp_socket_sharing_port;
 use crate::messages::Message;
 use crate::messages::Message::ControllerAddress;
-use std::io::ErrorKind;
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
-use std::thread::{sleep, spawn};
-use std::time::Instant;
 use faulted::{is_faulted, set_to_faulted};
 use log::log_client::ReliableLogSender;
 use log::LogLevel;
+use std::io::ErrorKind;
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::thread::{sleep, spawn};
+use std::time::Instant;
 
 pub fn init_udp_broadcasting(
     tcp_bound_to: SocketAddr,

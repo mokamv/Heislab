@@ -7,6 +7,7 @@ name = "common"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "driver-rust",
  "faulted",
  "libc",
  "log",
@@ -30,7 +31,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "driver-rust"
 version = "0.1.0"
-source = "git+https://github.com/TTK4145/driver-rust?tag=v0.1.0#6c287b7636698b59d3bc8ad88ab6ab00a2eb9972"
+source = "git+https://github.com/LeVraiPiroZz/driver-rust?tag=v0.2.0#a6599c317cb2fe6b5fc222d49adbd36b860679bc"
 dependencies = [
  "crossbeam-channel",
 ]
