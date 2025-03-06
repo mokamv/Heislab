@@ -54,38 +54,36 @@ impl ElevatorPool {
                 println!("Disconnected from client");
             }
 
-            //TODO REMOVE TEST & fix
             Message::ClientButtonCall { pressed } => {
-                
+                //TODO: make this as a memberfunction of elevatorPool  
                 match pressed{
                     Hall => {
-                        //put on hallight
                         mut min cost = 128;
                         mut min elevator_min_cost;
-                        for elevator in self.poll{
-                            elev_cost = elevator.ElevatorState.cost()
+                        for identifiedEelev in self.poll{
+                            elev_cost = identifiedEelevator.elevator.cost()
                             if elev_cost < cost{
                                 cost = elev_cost
                                 elevator_min_cost = elevator; 
                             }
+                            identifiedEelevator.elevator.turn_on_lights(message); //TODO: function turn on lights not made, must send a message to client
                         }
-                        //add message to elevator_min_cost queue
+                        //turning on lights
+                        self.client_pool.send(
+                            id = identifiedEelevator.identifier;
+                            Target::Specific(id),
+                            Message::LightControl { target: pressed, is_lit: true }
+                        ).unwrap();
                     }
                     Cab => {
+                        message.identifier
                         //add to the respective elevator queue
+                        self.client_pool.send(
+                            Target::Specific(identifier),
+                            Message::GotoFloor { go_to_floor: pressef.target()}
+                        ).unwrap();
                     }
                 };
-
-
-
-                self.client_pool.send(
-                    Target::Specific(identifier),
-                    Message::LightControl { target: pressed, is_lit: true }
-                ).unwrap();
-                self.client_pool.send(
-                    Target::Specific(identifier),
-                    Message::GotoFloor { go_to_floor: pressed.target() }
-                ).unwrap();
             }
 
             Message::ClientObstructed { .. } => {}
