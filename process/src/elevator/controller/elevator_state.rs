@@ -1,8 +1,7 @@
 use common::data_struct::CallRequest;
-use common::data_struct::CabinState;
 use crate::elevator::controller::current_service::CurrentService;
 use crate::queue::queue::Queue;
-use std::cmp::Ordering;
+use crate::elevator::controller::motor_direction::MotorDirection;
 
 pub struct ElevatorState {
     is_connected: bool,
@@ -37,41 +36,34 @@ impl ElevatorState {
 
     }
 
-    pub fn cost(&self, call: CallRequest) -> i8 {
-        // Start with maximum cost
-        let mut cost: i8 = 127;
+    pub fn cost(&self, call: CallRequest::Hall) -> i8 {
+
+        let mut cost: i8 = 127; // max cost
         
         let target_floor = call.target();
         let current_floor = self.current_service.state.get_current_floor();
         
         if !self.is_connected {
-            return cost; // Return max cost if elevator is disconnected
+            return cost; // Max cost is returned if elevator is disconnected
         }
 
-        if !self.current_service.is_init() {
-            // Elevator is idle
-            match current_floor.cmp(&target_floor) {
-                Ordering::Equal => return -128, // Best case: already at the floor and idle
-                _ => {
-                    // Cost increases with distance when idle
-                    let distance = (current_floor as i8 - target_floor as i8).abs();
-                    return distance.min(126); // Cap at 126 to leave room for max cost
-                }
+        if !self.current_service.is_init() { // Elevator is idle
+            if current_floor == target_floor {
+                return -128; // Best case: already at the floor and idle
+            } else {
+                // Cost is increased according to distance when idle
+                let distance = (current_floor as i8 - target_floor as i8).abs();
+                return distance.min(126); // Cap at 126 to leave room for max cost
             }
         }
 
         // Elevator is servicing a request
         let current_direction = self.current_service.state.get_direction();
-        let call_direction = match call {
-            CallRequest::Hall { direction, .. } => Some(direction),
-            CallRequest::Cab { .. } => None
-        };
 
         // Check if call is in the same direction
-        let is_same_direction = match (current_direction, call_direction) {
-            (MotorDirection::Stop, _) => true,
-            (_, None) => true, // Cab calls can be serviced in any direction
-            (dir1, Some(dir2)) => dir1 == dir2
+        let is_same_direction = match current_direction {
+            MotorDirection::Stop => true,
+            dir => dir == direction
         };
 
         if is_same_direction {
@@ -85,8 +77,8 @@ impl ElevatorState {
                         (target_floor as i8 - current_floor as i8).abs()
                     } else {
                         // Will need to come back
-                        ((current_target as i8 - current_floor as i8).abs() + 
-                         (current_target as i8 - target_floor as i8).abs())
+                        ((current_target as i8 - current_floor as i8).abs() +
+                        (current_target as i8 - target_floor as i8).abs())
                     }
                 },
                 MotorDirection::Down => {
@@ -96,19 +88,16 @@ impl ElevatorState {
                     } else {
                         // Will need to come back
                         ((current_floor as i8 - current_target as i8).abs() + 
-                         (target_floor as i8 - current_target as i8).abs())
+                        (target_floor as i8 - current_target as i8).abs())
                     }
                 },
-                MotorDirection::Stop => {
+                MotorDirection::Stop => { // if elevator is idle
                     (current_floor as i8 - target_floor as i8).abs()
                 }
             };
-
-            // Add penalty for number of stops already planned
-            cost += (self.main_queue.len() as i8).min(20);
+            cost += (self.main_queue.len() as i8).min(20); // Penalty for number of stops already planned
         }
 
-        // Ensure cost stays within i8 bounds
-        cost.max(-128).min(127)
+        cost.max(-128).min(127) // To ensure that cost stays within i8 bounds
     }
 }
