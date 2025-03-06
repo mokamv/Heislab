@@ -51,7 +51,7 @@ impl ElevatorState {
             if current_floor == target_floor {
                 return -128; // Best case: already at the floor and idle
             } else {
-                // Cost is increased according to distance when idle
+                // Cost is increased according to distance between current floor and target floor when idle
                 let distance = (current_floor as i8 - target_floor as i8).abs();
                 return distance.min(126); // Cap at 126 to leave room for max cost
             }
@@ -69,7 +69,7 @@ impl ElevatorState {
         if is_same_direction {
             let current_target = self.current_service.request.as_ref().unwrap().target();
             
-            // Calculate base cost based on position relative to current path
+            // Calculating cost based on position of target floor relative to the current path
             cost = match current_direction {
                 MotorDirection::Up => {
                     if target_floor >= current_floor && target_floor <= current_target {
@@ -95,7 +95,7 @@ impl ElevatorState {
                     (current_floor as i8 - target_floor as i8).abs()
                 }
             };
-            cost += (self.main_queue.len() as i8).min(20); // Penalty for number of stops already planned
+            cost += (self.main_queue.len() as i8).min(20); // Penalty for number of stops planned
         }
 
         cost.max(-128).min(127) // To ensure that cost stays within i8 bounds
