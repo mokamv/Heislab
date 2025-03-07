@@ -30,6 +30,18 @@ impl ElevatorService {
         }
     }
 
+    pub(super) fn direction(&self) -> MotorDirection {
+        self.direction
+    }
+
+    pub(super) fn final_floor(&self) -> u8 {
+        self.final_request.target()
+    }
+
+    pub(super) fn number_of_stops(&self) -> usize {
+        self.serviceable_requests.len()
+    }
+
     pub(super) fn is_already_in(&self, new_request: &CallRequest) -> bool {
         self.final_request.eq(new_request) || self.serviceable_requests.contains(new_request)
     }
