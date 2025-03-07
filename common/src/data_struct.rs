@@ -1,10 +1,9 @@
 use driver_rust::elevio::elev::{CallType, MotorDirection};
-use std::cmp::{max, Ordering};
+use std::cmp::Ordering;
 
-use libc::abs;
-use CabinState::DoorClose;
 use crate::data_struct::CabinState::{Between, DoorOpen};
 use crate::data_struct::CallRequest::{Cab, Hall};
+use CabinState::DoorClose;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CallRequest {
@@ -143,10 +142,16 @@ impl CabinState {
         } else { false }
     }
 
-    pub fn increment_between(&mut self) {
-        let Between { to_floor, .. } = *self else { unreachable!() };
+    pub fn is_idle(&self) -> bool {
+        if let DoorClose { .. } = *self {
+            true
+        } else { false }
+    }
 
-        *self = match self.get_direction() {
+    pub fn increment_between(&mut self) {
+        let Between { from_floor, to_floor } = *self else { unreachable!() };
+
+        *self = match Self::get_direction_from_to(from_floor, to_floor) {
             MotorDirection::Down => Between { from_floor: to_floor, to_floor: to_floor - 1 },
             MotorDirection::Up => Between { from_floor: to_floor, to_floor: to_floor + 1 },
             MotorDirection::Stop => unreachable!()
@@ -156,7 +161,7 @@ impl CabinState {
     pub fn get_current_floor_relative_to(&self, target: u8) -> u8 {
         match *self {
             DoorOpen { current_floor }
-            | DoorClose { current_floor} => current_floor,
+            | DoorClose { current_floor } => current_floor,
             Between { from_floor, to_floor } => {
                 let from_distance = (target as i32 - from_floor as i32).abs();
                 let to_distance = (target as i32 - to_floor as i32).abs();
@@ -170,15 +175,13 @@ impl CabinState {
         }
     }
 
-    #[deprecated]
-    pub fn get_current_floor(&self) -> u8 {
+    pub fn get_last_seen_floor(&self) -> u8 {
         match *self {
             DoorOpen { current_floor }
-            | DoorClose { current_floor}
+            | DoorClose { current_floor }
             | Between { from_floor: current_floor, .. } => current_floor
         }
     }
-
     pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
         match self.get_current_floor_relative_to(to).cmp(&to) {
             Ordering::Less => MotorDirection::Up,
@@ -187,22 +190,11 @@ impl CabinState {
         }
     }
 
-    #[deprecated] // TODO ????
     pub fn get_direction_from_to(from: u8, to: u8) -> MotorDirection {
-        Between { from_floor: from, to_floor: to }.get_direction()
-    }
-
-    #[deprecated] // TODO ????
-    pub fn get_direction(&self) -> MotorDirection {
-        match self {
-            DoorOpen { .. } | DoorClose { .. } => MotorDirection::Stop,
-            Between{ from_floor, to_floor} => {
-                match from_floor.cmp(&to_floor) {
-                    Ordering::Less => MotorDirection::Up,
-                    Ordering::Equal => unreachable!(),
-                    Ordering::Greater => MotorDirection::Down
-                }
-            }
+        match from.cmp(&to) {
+            Ordering::Less => MotorDirection::Up,
+            Ordering::Equal => MotorDirection::Stop,
+            Ordering::Greater => MotorDirection::Down
         }
     }
 }

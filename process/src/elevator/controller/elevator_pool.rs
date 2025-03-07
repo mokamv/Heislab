@@ -1,25 +1,20 @@
-use driver_rust::elevio::elev::MotorDirection;
+use crate::elevator::controller::elevator_state::ElevatorState;
 use common::connection::client_pool::client_pool::{ClientPool, Target};
 use common::connection::connection_handle::handle::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
-use crate::elevator::controller::elevator_state::ElevatorState;
-
-struct IdentifiedElevator {
-    elevator: ElevatorState,
-    identifier: ConnectionIdentifier
-}
+use crate::elevator::controller::light_control::LightControl;
 
 pub struct ElevatorPool {
-    pool: Vec<IdentifiedElevator>,
-    client_pool: ClientPool
+    pool: Vec<ElevatorState>,
+    client_pool: ClientPool,
 }
 
 impl ElevatorPool {
     pub fn from(client_pool: ClientPool) -> Self {
-        let mut elevators: Vec<IdentifiedElevator> = vec![];
+        let mut elevators = vec![];
         client_pool.client_identifiers().iter().for_each(|elevator_id| {
-            elevators.push(IdentifiedElevator { elevator: Default::default(), identifier: *elevator_id })
+            elevators.push(ElevatorState::from(*elevator_id))
         });
 
         Self {
@@ -29,7 +24,7 @@ impl ElevatorPool {
     }
 
     fn get_elevator(&mut self, elevator_id: ConnectionIdentifier) -> &mut ElevatorState {
-        &mut self.pool.iter_mut().find(|candidate| candidate.identifier == elevator_id).unwrap().elevator
+        self.pool.iter_mut().find(|candidate| candidate.identifier() == elevator_id).unwrap()
     }
 
     pub fn handle_elevator_message(
@@ -37,9 +32,7 @@ impl ElevatorPool {
         identifier: ConnectionIdentifier,
         message: Message
     ) {
-        let elevator = self.get_elevator(identifier);
-        println!("{message:?}");
-
+        let mut elevator = self.get_elevator(identifier);
         match message {
             Message::Connected => {
                 elevator.set_connected(false);
@@ -55,41 +48,49 @@ impl ElevatorPool {
                 println!("Disconnected from client");
             }
 
-            //TODO REMOVE TEST
-            Message::ClientButtonCall { pressed } => {
-                self.client_pool.send(
-                    Target::Specific(identifier),
-                    Message::LightControl { target: pressed, is_lit: true }
-                ).unwrap();
-                self.client_pool.send(
-                    Target::Specific(identifier),
-                    Message::GotoFloor { go_to_floor: pressed.target() }
-                ).unwrap();
-            }
+            Message::ClientButtonCall { pressed: request } => {
+                if let CallRequest::Hall { .. } = request {
+                    elevator = self.best_elevator(request);
+                }
+                elevator.add_and_get_new_target(request);
+                let can_receive = elevator.can_receive();
+                let new_request = elevator.get_next_command();
 
-            Message::ClientObstructed { .. } => {}
+                LightControl::turn_on_for_from(identifier, request)
+                    .send(&mut self.client_pool);
 
-            //TODO CHANGE
-            Message::ClientCabinState { cabin_state } => {
-                match cabin_state {
-                    CabinState::DoorOpen { current_floor } => {
+                // Update state immediately if possible.
+                if can_receive {
+                    if let Some(new_request) = new_request {
                         self.client_pool.send(
                             Target::Specific(identifier),
-                            Message::LightControl { target: CallRequest::Cab { floor: current_floor } , is_lit: false }
-                        ).unwrap();
-
-                        self.client_pool.send(
-                            Target::All,
-                            Message::LightControl { target: CallRequest::Hall { floor: current_floor, direction: MotorDirection::Down } , is_lit: false }
-                        ).unwrap();
-
-                        self.client_pool.send(
-                            Target::All,
-                            Message::LightControl { target: CallRequest::Hall { floor: current_floor, direction: MotorDirection::Up } , is_lit: false }
-                        ).unwrap();
-
+                            new_request
+                        ).unwrap()
                     }
-                    CabinState::DoorClose { .. } => {}
+                }
+            }
+
+            // TODO
+            Message::ClientObstructed { .. } => {}
+
+            Message::ClientCabinState { cabin_state } => {
+                elevator.set_state(cabin_state);
+                match cabin_state {
+                    CabinState::DoorOpen { current_floor } => {
+                        let lights = elevator.complete_request_at_floor(current_floor);
+                        for light_control in lights {
+                            light_control.send(&mut self.client_pool)
+                        }
+                    }
+                    CabinState::DoorClose { .. } => {
+                        let next_command = elevator.get_next_command();
+                        if let Some(next_command) = next_command {
+                            self.client_pool.send(
+                                Target::Specific(identifier),
+                                next_command
+                            ).unwrap()
+                        }
+                    }
                     CabinState::Between { .. } => {}
                 }
             }
@@ -100,14 +101,24 @@ impl ElevatorPool {
 
 
             Message::ControllerAddress { .. } => {}
-            Message::LightControl { .. } => {}
-            Message::GotoFloor { .. } => {}
             Message::ClientAuth { .. } => {}
             Message::ControllerAuth { .. } => {}
             Message::ControllerCurrentState { .. } => {}
 
-            Message::KeepAlive => unreachable!(),
+            _ => unreachable!()
         }
     }
 
+    fn best_elevator(&mut self, request: CallRequest) -> &mut ElevatorState {
+        #[cfg(debug_assertions)]
+        if let CallRequest::Cab {..} = request { panic!("Cannot call this function with a cab call") }
+
+
+        self.pool
+            .iter_mut()
+            .min_by(|value_a, value_b| {
+                value_a.cost(request).cmp(&value_b.cost(request))
+            })
+            .unwrap()
+    }
 }

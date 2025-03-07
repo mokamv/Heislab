@@ -66,7 +66,7 @@ impl ClientState {
             }
             Message::Authenticated => {
                 self.is_auth = true;
-                self.message_sender.send(self.last_state);
+                self.handle_synchronisation();
                 println!("Identified to the server, starting online mode")
             }
 
@@ -80,12 +80,17 @@ impl ClientState {
                 self.send_updated_state(new_state);
             },
 
-            Message::LightControl { target, is_lit } => {
+            Message::LightControl { button: target, is_lit } => {
+                println!("LIGHT: {target:?}: {is_lit}");
                 self.elevator_hw.call_button_light(target, is_lit);
             },
 
             _ => {}
         }
+    }
+
+    fn handle_synchronisation(&mut self) {
+        self.message_sender.send(self.last_state);
     }
 
     fn handle_elevator_event(&mut self, elevator_event: ElevatorEvent) {
@@ -104,22 +109,11 @@ impl ClientState {
         self.send_updated_state(new_state);
     }
 
-    fn send_updated_state(&mut self, cabin_state: Option<CabinState>) {
-        match cabin_state {
-            // Failure of last operation
-            None => {
-                // TODO SEND BACK A MESSAGE TO CONTROLLER ??????
-            }
-
-            // Success of last operation
-            Some(cabin_state) => {
-                if self.last_state != cabin_state {
-                    self.last_state = cabin_state;
-                    if self.is_auth {
-                        self.message_sender.send(self.last_state);
-                    }
-                }
-
+    fn send_updated_state(&mut self, cabin_state: CabinState) {
+        if self.last_state != cabin_state {
+            self.last_state = cabin_state;
+            if self.is_auth {
+                self.message_sender.send(self.last_state);
             }
         }
     }

@@ -12,13 +12,9 @@ pub mod elevator {
     }
     
     pub mod controller {
+        pub mod light_control;
         pub mod elevator_state;
-        pub mod current_service;
+        pub mod elevator_service;
         pub mod elevator_pool;
     }
-}
-
-pub mod queue {
-    pub mod queue;
-    pub mod queue_element;
 }

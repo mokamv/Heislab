@@ -48,7 +48,7 @@ pub enum Message {
 
     // Controller messages
     ControllerAddress { id: u8, state: ControllerState, address: SocketAddr },
-    LightControl { target: CallRequest, is_lit: bool },
+    LightControl { button: CallRequest, is_lit: bool },
     GotoFloor { go_to_floor: u8 },
 
     // Connection State flow
@@ -112,7 +112,7 @@ impl Message {
                     }
                 }
             },
-            LightControl { target, is_lit } => {
+            LightControl { button: target, is_lit } => {
                 raw_message[0] = 129;
                 raw_message[1..4].copy_from_slice(&target.encode());
                 raw_message[4] = is_lit as u8;
@@ -176,7 +176,7 @@ impl Message {
                     }
                     _ => panic!("TODO")
                 } },
-            129 => LightControl { target: CallRequest::decode(&raw_message[1..4]), is_lit: raw_message[4] != 0 },
+            129 => LightControl { button: CallRequest::decode(&raw_message[1..4]), is_lit: raw_message[4] != 0 },
             130 => GotoFloor { go_to_floor: raw_message[1] },
 
 

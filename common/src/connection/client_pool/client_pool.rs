@@ -9,6 +9,7 @@ use log::log_client::ReliableLogSender;
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug, Copy, Clone)]
 pub enum Target {
     All,
     Specific(ConnectionIdentifier)

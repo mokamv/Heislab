@@ -15,10 +15,8 @@ pub struct DoorControl {
 
 impl DoorControl {
     pub fn new(poll_period: Duration) -> (DoorControl, Receiver<()>) {
-
         let (close_door_tx, close_door_rx) = unbounded::<()>();
-
-
+        
         let is_obstructed = Arc::new(AtomicBool::new(false));
         let is_open = Arc::new(AtomicBool::new(false));
 
