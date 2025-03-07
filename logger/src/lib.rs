@@ -10,12 +10,12 @@ const LOG_SERVER_TCP_PORT: u16 = 8000;
 const LOG_SERVER_TCP_ADDRESS: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), LOG_SERVER_TCP_PORT);
 
-/// Provides a level to attach to a log message or to a log server so that
+/// Provides a level to attach to a logger message or to a logger server so that
 /// messages can be filtered.
 ///
-/// Per usual with logging levels, [Debug](LogLevel::DEBUG) is for a server, equivalent to not filtering any log message,
-/// and messages tagged with this level will only be displayed by log server of the same level.
-/// A log server tagged with [Error](LogLevel::ERROR) will only display messages also tagged with [Error](LogLevel::ERROR)
+/// Per usual with logging levels, [Debug](LogLevel::DEBUG) is for a server, equivalent to not filtering any logger message,
+/// and messages tagged with this level will only be displayed by logger server of the same level.
+/// A logger server tagged with [Error](LogLevel::ERROR) will only display messages also tagged with [Error](LogLevel::ERROR)
 #[derive(Ord, Eq, PartialOrd, PartialEq, Copy, Clone, Debug)]
 pub enum LogLevel {
     DEBUG = 0,
@@ -40,7 +40,7 @@ impl TryFrom<isize> for LogLevel {
 }
 
 impl LogLevel {
-    /// Convenience function to indicate if a log server will filter out a log message.
+    /// Convenience function to indicate if a logger server will filter out a logger message.
     fn can_log(&self, message_log_level: &Self) -> bool {
         match self.cmp(message_log_level) {
             Ordering::Equal | Ordering::Less => true,
@@ -73,7 +73,7 @@ mod log_message {
         MessageTooLarge
     }
 
-    /// Convert a [LogHeader], which is basically a raw byte array, to a log level and a message size.
+    /// Convert a [LogHeader], which is basically a raw byte array, to a logger level and a message size.
     ///
     /// This function is the counterpart of [encode_header]
     pub fn decode_header(header: LogHeader) -> Result<(LogLevel, usize), LogMessageError> {
@@ -102,7 +102,7 @@ mod log_message {
         Ok(header)
     }
 
-    /// Actual data structure to represent log messages inside the whole logging module
+    /// Actual data structure to represent logger messages inside the whole logging module
     pub struct LogMessage {
         pub log_level: LogLevel,
         pub message: String
@@ -124,10 +124,10 @@ mod log_message {
     }
 }
 
-/// This module is responsible for providing the log server to any application wanting to implement it.
+/// This module is responsible for providing the logger server to any application wanting to implement it.
 ///
-/// The log server can be used as a middleware by using [act_as_middleware_logger]. This allows users to
-/// implement their own logic with logs without having to implement the log collection and client part.
+/// The logger server can be used as a middleware by using [act_as_middleware_logger]. This allows users to
+/// implement their own logic with logs without having to implement the logger collection and client part.
 ///
 /// A utility function - [act_as_primary_logger] - is also provided, as an in-house middleware, that only redirect all logs to stdout
 pub mod log_server {
@@ -140,10 +140,10 @@ pub mod log_server {
     use crate::log_message::{decode_header, empty_log_header, LogBodyPart, LogHeader, LogMessage, LogMessageError};
     use crate::{LogLevel, LOG_SERVER_TCP_ADDRESS};
 
-    /// List of potential errors the log server could encounter.
+    /// List of potential errors the logger server could encounter.
     #[derive(Debug)]
     pub enum LogServerError {
-        /// The socket address is already bound or non-bindable, it probably means that another log server is running
+        /// The socket address is already bound or non-bindable, it probably means that another logger server is running
         /// or that another software is bound to this very address.
         CantBind,
 
@@ -151,7 +151,7 @@ pub mod log_server {
         /// error.
         ServerDeadChannel,
 
-        /// The server has faced an error that crashed it, there is nothing that can be done other that relaunching a log server.
+        /// The server has faced an error that crashed it, there is nothing that can be done other that relaunching a logger server.
         ServerTerminated,
 
         /// A client has been disconnected. It can be because of a network problem or just because the client has stopped normally.
@@ -196,7 +196,7 @@ pub mod log_server {
         }
     }
 
-    /// Convenience function acting as a log middleware, and redirecting all non-filtered messages to stdout
+    /// Convenience function acting as a logger middleware, and redirecting all non-filtered messages to stdout
     pub fn act_as_primary_logger(log_level: LogLevel) -> Result<(), LogServerError> {
         let logger = act_as_middleware_logger(log_level)?;
 
@@ -211,12 +211,12 @@ pub mod log_server {
             }
         };
 
-        // Since the receiver is broken, we cannot use it as a way to log the error.
+        // Since the receiver is broken, we cannot use it as a way to logger the error.
         println!("Logger is broken");
         Err(LogServerError::ServerTerminated)
     }
 
-    /// Main function of the log server module, provides a channel of all collected logs, already filtered.
+    /// Main function of the logger server module, provides a channel of all collected logs, already filtered.
     pub fn act_as_middleware_logger(log_level: LogLevel) -> Result<Receiver<LogMessage>, LogServerError> {
         let (logging_tx, logging_rx)
             = unbounded();

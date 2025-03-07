@@ -34,7 +34,7 @@ fn main() {
     }
 
     if overview {
-        // Start log server, this is blocking.
+        // Start logger server, this is blocking.
         if let Err(error) = log_server::act_as_primary_logger(LogLevel::INFO) {
             println!("Log server encountered an error: {:?}", error)
         }

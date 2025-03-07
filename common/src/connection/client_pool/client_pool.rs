@@ -90,6 +90,7 @@ struct ClientPoolShared {
 }
 
 impl ClientPoolShared {
+    // Generate a client_pool
     fn new(logger: ReliableLogSender, managed_clients: usize) -> Self {
         Self {
             has_started: false,
@@ -99,6 +100,7 @@ impl ClientPoolShared {
             receiver: None,
         }
     }
+    // Used to tell the client_pool to accept a specific client id.
     fn with_client_id(&mut self, client_id: ConnectionIdentifier) {
         if self.has_started {
             set_to_faulted("You cannot add clients after starting aggregation");
@@ -120,6 +122,7 @@ impl ClientPoolShared {
         );
     }
 
+    // Start the message aggregation daemon.
     fn start(&mut self) {
         if self.has_started {
             set_to_faulted("Client pool aggregation has already started.");

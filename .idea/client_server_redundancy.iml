@@ -5,9 +5,9 @@
       <sourceFolder url="file://$MODULE_DIR$/client/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/server/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/common/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/log/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/process/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/faulted/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/logger/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

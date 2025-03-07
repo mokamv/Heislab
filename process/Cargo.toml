@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = { path = "../log" }
+log = { path = "../logger" }
 common = { path = "../common" }
 crossbeam-channel = "0.5.14"
 driver-rust = { git = "https://github.com/LeVraiPiroZz/driver-rust", tag = "v0.2.0" }

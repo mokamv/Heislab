@@ -5,6 +5,6 @@ edition = "2021"
 [dependencies]
 libc = "0.2.169"
 crossbeam-channel = "0.5.14"
-log = { path = "../log" }
+log = { path = "../logger" }
 faulted = { path = "../faulted" }
 driver-rust = { git = "https://github.com/LeVraiPiroZz/driver-rust", tag = "v0.2.0" }
