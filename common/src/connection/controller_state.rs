@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use log::log_client::ReliableLogSender;
+use log::log_client::{Logger, ReliableLogSender};
 use log::LogLevel;
 use crate::connection::connection_handle::handle::ConnectionIdentifier;
 use crate::connection::controller_state::ControllerState::{Backup, Master, MasterSteppingDown};
@@ -54,12 +54,12 @@ impl Clone for ControllerStateNotifier {
 }
 
 impl ControllerStateNotifier {
-    pub(super) fn new(controller_id: ConnectionIdentifier, logger: ReliableLogSender) -> (Self, Receiver<ControllerState>) {
+    pub(super) fn new(controller_id: ConnectionIdentifier) -> (Self, Receiver<ControllerState>) {
         let (state_sender, state_receiver) = unbounded();
 
         (Self {
             state_sender,
-            logger,
+            logger: Logger::get_sender(format!("[Controller][State][{controller_id}]")),
             current_state: Arc::new(Mutex::new(Backup)),
             controller_id
         }, state_receiver)

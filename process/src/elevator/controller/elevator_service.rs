@@ -81,12 +81,7 @@ impl ElevatorService {
     pub(super) fn can_add(&self, new_request: &CallRequest, state: &CabinState) -> bool {
         debug_assert!(! self.is_already_in(new_request), "An already serviceable request is not serviceable again");
         debug_assert!(! self.is_upgradeable_with(new_request), "Upgrade must be preferred over adding to the vec since it will break it");
-
-        // TODO CHANGE THIS, DEPENDING ON THE CONDITION
-        if self.is_final_floor(new_request.target()) {
-            return false
-        }
-
+        
         // Refuse hall request in opposite direction
         if let CallRequest::Hall { direction, .. } = new_request {
             if self.direction.ne(direction) {
@@ -98,9 +93,9 @@ impl ElevatorService {
 
         match self.direction {
             MotorDirection::Up => last_seen_floor < new_request.target()
-                && new_request.target() < self.final_request.target(),
+                && new_request.target() <= self.final_request.target(),
             MotorDirection::Down => last_seen_floor > new_request.target()
-                && new_request.target() > self.final_request.target(),
+                && new_request.target() >= self.final_request.target(),
             MotorDirection::Stop => false // Always false, current floor service are always single request.
         }
     }

@@ -3,7 +3,7 @@ use crate::process::common::Process;
 use common::connection::connection_handle::message_sender::MessageSender;
 use common::data_struct::CabinState;
 use common::messages::Message;
-use crossbeam_channel::{after, select};
+use crossbeam_channel::select;
 use driver_rust::elevio::elev::ElevatorEvent;
 use std::time::Duration;
 
@@ -12,7 +12,6 @@ const FLOOR_COUNT: u8 = 4;
 impl Process {
     pub(crate) fn client_task(&mut self) {
         let poll_period = Duration::from_millis(25);
-        let try_init_after = after(2 * poll_period);
 
         let mut elevator_hw = ElevatorHardware::new("127.0.0.1:15657", FLOOR_COUNT, poll_period);
 
@@ -30,7 +29,6 @@ impl Process {
         println!("Elevator started");
         loop {
             select! {
-                recv(try_init_after) -> _ => client_state.elevator_hw.init_if_is_not_yet(),
                 recv(message_receiver) -> message => {
                     let message = message.unwrap();
                     client_state.handle_message_event(message);

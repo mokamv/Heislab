@@ -18,18 +18,14 @@ impl BackupPairing {
     pub fn new(
         controller_id: u8,
         client_pool: ClientPool,
-        logger: ReliableLogSender
     ) -> Self {
         let (controller_state, controller_state_recv)
-            = ControllerStateNotifier::new(
-            controller_id,
-            logger.clone()
-        );
+            = ControllerStateNotifier::new(controller_id);
 
         let controller_link = ControllerLink::new(
             controller_state.clone(),
             client_pool,
-            logger
+            controller_id
         );
 
         let mut process = Self { controller_link, controller_state };

@@ -8,61 +8,52 @@ use log::LogLevel;
 pub struct Process {
     pub(super) client_handle: ConnectionHandle,
     pub(super) process_id: u8,
-    pub(super) logger: Logger,
 }
 
 impl Process {
-    pub fn new(id: u8) -> Self {
-        let mut logger = Logger::init();
+    pub fn new(process_id: u8) -> Self {
+        Logger::init_logger();
 
-        let client_handle = ConnectionHandle::new_client_connection_handler(
-            logger.get_sender(format!("[Client][{id}]"))
-        );
+        let client_handle = ConnectionHandle::new_client_side_connection_handler(process_id);
         
         Process {
             client_handle,
-            process_id: id,
-            logger,
+            process_id,
         }
     }
 
     fn client_side(mut self) {
         self.client_task();
-        self.logger.wait_for_logger_termination();
+        Logger::terminate_logging();
     }
 
-    pub fn start_without_controller(id: u8) {
-        Self::new(id).client_side()
+    pub fn start_without_controller(process_id: u8) {
+        Self::new(process_id).client_side()
     }
 
-    pub fn start_with_controller(id: u8, client_count: usize) {
-        let mut program = Self::new(id);
+    pub fn start_with_controller(process_id: u8, client_count: usize) {
+        let mut program = Self::new(process_id);
 
-        program.logger.send_once(format!("[{}][MAIN] Server has started in backup mode", program.process_id), LogLevel::INFO);
+        Logger::send_once(format!("[{}][MAIN] Server has started in backup mode", program.process_id), LogLevel::INFO);
 
-        let client_pool = ClientPool::new(
-            program.logger.get_sender("[ClientPool]".to_string()),
-            client_count
-        );
+        let client_pool = ClientPool::new(client_count);
 
         let backup_pairing = BackupPairing::new(
-            id,
+            program.process_id,
             client_pool.clone(),
-            program.logger.get_sender(format!("[Controller][{id}]")),
         );
 
         let tcp_bound_to = init_controller_tcp_listening(
             backup_pairing.controller_state_notifier(),
             backup_pairing.controller_link(),
             &client_pool,
-            program.logger.get_sender(format!("[{}][Main][TCP]", program.process_id))
+            program.process_id
         );
 
         init_udp_broadcasting(
             tcp_bound_to,
             backup_pairing.controller_state_notifier(),
-            program.process_id,
-            program.logger.get_sender(format!("[{}][MAIN][Broadcast]", program.process_id))
+            program.process_id
         );
 
         program.controller_task(client_pool.start(), backup_pairing);

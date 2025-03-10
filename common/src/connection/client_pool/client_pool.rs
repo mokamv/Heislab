@@ -5,7 +5,7 @@ use crate::messages::Message::Authenticated;
 use crate::messages::{Message, TimedMessage};
 use crossbeam_channel::Receiver;
 use faulted::set_to_faulted;
-use log::log_client::ReliableLogSender;
+use log::log_client::{Logger, ReliableLogSender};
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
 
@@ -36,9 +36,9 @@ pub struct ClientPool {
 }
 
 impl ClientPool {
-    pub fn new(logger: ReliableLogSender, max_client_nb: usize) -> Self {
+    pub fn new(max_client_nb: usize) -> Self {
         let mut pool = Self {
-            shared_pool: Arc::new(Mutex::new(ClientPoolShared::new(logger, max_client_nb))),
+            shared_pool: Arc::new(Mutex::new(ClientPoolShared::new(max_client_nb))),
         };
 
         for i in 0..max_client_nb {
@@ -90,12 +90,12 @@ struct ClientPoolShared {
 }
 
 impl ClientPoolShared {
-    fn new(logger: ReliableLogSender, managed_clients: usize) -> Self {
+    fn new(managed_clients: usize) -> Self {
         Self {
             has_started: false,
             max_client_nb: managed_clients,
             clients: Vec::with_capacity(managed_clients),
-            logger,
+            logger: Logger::get_sender("[ClientPool]".to_string()),
             receiver: None,
         }
     }
@@ -113,9 +113,13 @@ impl ClientPoolShared {
         self.clients.push(
             Client {
                 identifier: client_id,
-                connection: Arc::new(Mutex::new(ConnectionHandle::new_server_connection_handler(
-                    self.logger.clone_with_new_prefix(format!("[ClientPool][{client_id}][TCP]"))
-                ))),
+                connection: Arc::new(
+                    Mutex::new(
+                        ConnectionHandle::new_server_side_connection_handler(
+                            client_id
+                        )
+                    )
+                ),
             }
         );
     }

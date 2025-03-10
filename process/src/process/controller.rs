@@ -6,14 +6,14 @@ use common::connection::controller_state::ControllerState;
 use common::connection::synchronisation::pairing::BackupPairing;
 use crossbeam_channel::select;
 use faulted::{is_faulted, set_to_faulted};
+use log::log_client::Logger;
 use log::LogLevel;
-use std::process::id;
 use std::thread::spawn;
 
 impl Process {
     pub(super) fn controller_task(&mut self, mut client_pool: ClientPool, backup_pairing: BackupPairing) {
-        let logger = self.logger.get_sender(format!("[{}][MAIN]", id()));
         let client_messages = client_pool.take_message_channel();
+        let process_id = self.process_id;
 
         spawn(move || {
             let mut elevators_pool = ElevatorPool::from(client_pool);
@@ -33,7 +33,7 @@ impl Process {
                 }
             }
 
-            logger.send("An error occurred\n\n\n", LogLevel::ERROR);
+            Logger::send_once(format!("[Controller {}] An error occurred\n\n\n", process_id), LogLevel::ERROR);
             set_to_faulted("Controller task failed");
         });
     }

@@ -1,8 +1,9 @@
 use common::data_struct::{CabinState, CallRequest};
 use crate::elevator::client::door_control::DoorControl;
-use driver_rust::elevio::elev::{Elevator, ElevatorEvent, MotorDirection};
+use driver_rust::elevio::elev::{Elevator, ElevatorEvent, FloorEvent, MotorDirection};
 use std::time::Duration;
 use crossbeam_channel::Receiver;
+use driver_rust::elevio::elev::FloorEvent::{AtFloor, BetweenFloors};
 
 pub struct MinimalState {
     cabin: CabinState,
@@ -70,13 +71,6 @@ impl ElevatorHardware {
         }
     }
 
-    pub fn init_if_is_not_yet(&mut self) {
-        if self.state.target == None
-            && self.state.cabin == Default::default() {
-            self.elevator.motor_direction(MotorDirection::Down)
-        }
-    }
-
     pub fn call_button_light(&mut self, call_request: CallRequest, on: bool) {
         let floor = call_request.target();
         self.elevator.call_button_light(floor, call_request.into(), on);
@@ -123,13 +117,24 @@ impl ElevatorHardware {
         self.state.cabin
     }
 
-    fn handle_floor_sensor(&mut self, floor: u8) -> CabinState {
-        self.elevator.floor_indicator(floor);
-        match self.state.target {
-            None => self.reach_idle(floor),
-            Some(target_floor) => {
-                if target_floor == floor { self.reach_target() }
-                else { self.reach_non_target_floor() }
+    fn handle_floor_sensor(&mut self, floor: FloorEvent) -> CabinState {
+        match floor {
+            BetweenFloors() => {
+                // No target + in between floor -> Repositioning
+                if self.state.target == None {
+                    self.elevator.motor_direction(MotorDirection::Down);
+                }
+                self.state.cabin
+            }
+            AtFloor(floor) => {
+                self.elevator.floor_indicator(floor);
+                match self.state.target {
+                    None => self.reach_idle(floor),
+                    Some(target_floor) => {
+                        if target_floor == floor { self.reach_target() }
+                        else { self.reach_non_target_floor() }
+                    }
+                }
             }
         }
     }

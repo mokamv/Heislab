@@ -1,10 +1,12 @@
+use crate::log_message::LogMessageError;
 use std::cmp::Ordering;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::Duration;
-use crate::log_message::LogMessageError;
 
 const CONNECTION_RETRY: Duration = Duration::from_secs(5);
-const DEAD_LOGGER_PURGE_PERIOD: Duration = Duration::from_secs(120);
+const SELECT_TIMEOUT: Duration = Duration::from_millis(50);
+const URGENT_WRITE_TIMEOUT: Duration = Duration::from_millis(50);
+const WRITE_TIMEOUT: Duration = Duration::from_millis(50);
 
 const LOG_SERVER_TCP_PORT: u16 = 8000;
 const LOG_SERVER_TCP_ADDRESS: SocketAddrV4 =
@@ -131,14 +133,14 @@ mod log_message {
 ///
 /// A utility function - [act_as_primary_logger] - is also provided, as an in-house middleware, that only redirect all logs to stdout
 pub mod log_server {
-    use std::mem::size_of;
-    use std::cmp::min;
-    use std::io::{Error, ErrorKind, Read};
-    use std::net::{TcpListener, TcpStream};
-    use std::thread::spawn;
-    use crossbeam_channel::{unbounded, Receiver, SendError, Sender};
     use crate::log_message::{decode_header, empty_log_header, LogBodyPart, LogHeader, LogMessage, LogMessageError};
     use crate::{LogLevel, LOG_SERVER_TCP_ADDRESS};
+    use crossbeam_channel::{unbounded, Receiver, SendError, Sender};
+    use std::cmp::min;
+    use std::io::{Error, ErrorKind, Read};
+    use std::mem::size_of;
+    use std::net::{TcpListener, TcpStream};
+    use std::thread::spawn;
 
     /// List of potential errors the log server could encounter.
     #[derive(Debug)]
@@ -336,264 +338,263 @@ pub mod log_server {
 }
 
 pub mod log_client {
+    use crate::log_message::LogMessage;
+    use crate::{LogLevel, CONNECTION_RETRY, LOG_SERVER_TCP_ADDRESS, SELECT_TIMEOUT, URGENT_WRITE_TIMEOUT, WRITE_TIMEOUT};
+    use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
+    use faulted::{is_faulted, set_to_faulted};
     use std::collections::VecDeque;
     use std::io::Write;
     use std::net::TcpStream;
-    use std::sync::{Arc, Mutex, Weak};
-    use std::thread::{sleep, spawn, JoinHandle};
-    use crossbeam_channel::{unbounded, Sender};
-    use faulted::is_faulted;
-    use crate::log_message::LogMessage;
-    use crate::{LogLevel, CONNECTION_RETRY, DEAD_LOGGER_PURGE_PERIOD, LOG_SERVER_TCP_ADDRESS};
+    use std::ops::Deref;
+    use std::sync::Mutex;
+    use std::thread::{spawn, JoinHandle};
+    use std::time::Instant;
+
+    static LOGGER: Logger = Logger::uninit();
 
     pub struct Logger {
-        logger_inst: Arc<LoggerImpl>
+        logger_impl: Mutex<Option<LoggerImpl>>
     }
 
     impl Logger {
-        pub fn init() -> Self {
+        const fn uninit() -> Self {
             Self {
-                logger_inst: Arc::new(LoggerImpl::init()),
+                logger_impl: Mutex::new(None),
             }
         }
 
-        pub fn get_sender(&mut self, prefix: String) -> ReliableLogSender {
-            let new_sender = Arc::new(Mutex::new(Some(
-                self.logger_inst.original_sender.clone()
-            )));
-
-            self.logger_inst.emitted_senders.lock().unwrap().push(Arc::downgrade(&new_sender));
-
-            ReliableLogSender {
-                wrapped_sender: new_sender,
-                associated_logger: Arc::downgrade(&self.logger_inst),
-                prefix
+        pub fn init_logger() {
+            let mut logger_impl = LOGGER.logger_impl.lock().unwrap();
+            match *logger_impl {
+                None => *logger_impl = Some(LoggerImpl::init()),
+                Some(_) => set_to_faulted("Logger is already initialized")
             }
         }
 
-        pub fn send_once(&mut self, message: String, level: LogLevel) {
-            if let Err(_send_error) = self.logger_inst.original_sender.send(LogMessage {
-                log_level: level,
-                message,
-            }) {
-                println!("Logger is dead");
+        fn dealloc_logger() {
+            let mut logger_impl = LOGGER.logger_impl.lock().unwrap();
+            match *logger_impl {
+                None => set_to_faulted("Logger is not initialized"),
+                Some(_) => *logger_impl = None
             }
         }
 
-        pub fn wait_for_logger_termination(self) {
-            let logger_impl = Arc::into_inner(self.logger_inst).unwrap();
+        pub fn get_sender(prefix: String) -> ReliableLogSender {
+            let logger_impl = LOGGER.logger_impl.lock().unwrap();
+            match logger_impl.deref() {
+                None => {
+                    set_to_faulted("Logger is not initialized");
+                    ReliableLogSender::no_op_sender()
+                }
+                Some(logger_impl) => {
+                    let wrapped_sender = logger_impl.original_sender.clone();
 
-            let emitted_senders = logger_impl.emitted_senders.lock().unwrap();
-
-            for logger in emitted_senders.iter() {
-                if let Some(logger) = logger.upgrade() {
-                    *logger.lock().unwrap() = None;
+                    ReliableLogSender {
+                        wrapped_sender,
+                        prefix
+                    }
                 }
             }
-            drop(emitted_senders);
+        }
 
+        pub fn send_once(message: String, level: LogLevel) {
+            let logger_impl = LOGGER.logger_impl.lock().unwrap();
+            match logger_impl.deref() {
+                None => set_to_faulted("Logger is not initialized"),
+                Some(logger_impl) => {
+                    if let Err(_send_error) = logger_impl.original_sender.send(LogMessage {
+                        log_level: level,
+                        message,
+                    }) {
+                        set_to_faulted("Logger channel is severed");
+                    }
+                }
+            }
+        }
 
-            drop(logger_impl.original_sender);
-            logger_impl.sync_thread.join().expect("TODO: panic message");
+        pub fn terminate_logging() {
+            let mut logger_impl = LOGGER.logger_impl.lock().unwrap();
+            match logger_impl.take() {
+                None => set_to_faulted("Logger is not initialized"),
+                Some(logger_impl) => {
+                    match logger_impl.shutdown_channel.send(()) {
+                        Ok(_) => {}
+                        Err(_) => set_to_faulted("Logging cannot be shutdown properly because the channel is closed.")
+                    }
+                    match logger_impl.sync_thread.join() {
+                        Ok(_) => {}
+                        Err(_) => set_to_faulted("Logging thread has panicked during its execution.")
+                    };
+                }
+            }
+            Self::dealloc_logger()
         }
     }
 
     struct LoggerImpl {
         original_sender: Sender<LogMessage>,
-        connect_socket: Arc<Mutex<Option<TcpStream>>>,
+        shutdown_channel: Sender<()>,
         sync_thread: JoinHandle<()>,
-        emitted_senders: Arc<Mutex<Vec<Weak<Mutex<Option<Sender<LogMessage>>>>>>>
     }
 
     impl LoggerImpl {
         fn init() -> Self {
-            let logger = Self::with_logging_loop();
-
-            logger.socket_liveliness_loop();
-            logger.purge_dead_loggers_loop();
-
-            logger
-        }
-
-        fn with_logging_loop() -> Self {
             let (logging_tx, logging_rx) = unbounded::<LogMessage>();
-            let connect_socket: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
+            let (shutdown_tx, shutdown_rx) = unbounded();
+
+            let mut tcp_stream: Option<TcpStream> = None;
+
+            let connection_liveliness_tick: Receiver<Instant> = tick(CONNECTION_RETRY);
 
             let mut log_queue: VecDeque<LogMessage> = VecDeque::with_capacity(128);
-            let sync_socket = connect_socket.clone();
+
             let sync_thread = spawn(move || {
                 'socket_listener: loop {
-                    let is_buffer_empty = Self::try_send_from_buffer(&mut log_queue, &sync_socket);
-
-                    match logging_rx.recv() {
-                        Ok(mut message_to_log) => {
-                            if !message_to_log.message.ends_with("\n") {
-                                message_to_log.message.push('\n');
-                            }
-
-                            if is_buffer_empty {
-                                Self::try_send_channel_message(&mut log_queue, message_to_log, &sync_socket)
-                            } else {
-                                Self::store_channel_message(&mut log_queue, message_to_log);
-                            }
+                    if is_faulted() { break 'socket_listener }
+                    select! {
+                        recv(shutdown_rx) -> _ => break 'socket_listener,
+                        recv(connection_liveliness_tick) -> _ => Self::socket_liveliness(&mut tcp_stream),
+                        recv(logging_rx) -> message => match message {
+                            Ok(message) => Self::try_send(message, &mut log_queue, &mut tcp_stream),
+                            Err(_) => break 'socket_listener
                         },
-                        Err(_channel_error) => { break 'socket_listener }
+                        default(SELECT_TIMEOUT) => {
+                            Self::try_send_from_buffer(&mut log_queue, &mut tcp_stream, false);
+                        }
                     }
                 }
 
-                Self::try_send_from_buffer(&mut log_queue, &sync_socket);
+                Self::try_send_from_buffer(&mut log_queue, &tcp_stream, true);
             });
 
             Self {
                 original_sender: logging_tx,
+                shutdown_channel: shutdown_tx,
                 sync_thread,
-                connect_socket,
-                emitted_senders: Arc::new(Mutex::new(vec![]))
             }
         }
 
-        fn socket_liveliness_loop(&self) {
-            let connect_socket = self.connect_socket.clone();
 
-            spawn(move || {
-                loop {
-                    if is_faulted() { break };
+        fn try_send(
+            mut message_to_log: LogMessage,
+            log_queue: &mut VecDeque<LogMessage>,
+            tcp_stream: &Option<TcpStream>
+        ) {
+            let is_buffer_empty = Self::try_send_from_buffer(log_queue, tcp_stream, false);
 
-                    let mut socket_lock = connect_socket.lock().unwrap();
-                    if socket_lock.is_none() {
-                        match TcpStream::connect(LOG_SERVER_TCP_ADDRESS) {
-                            Ok(socket) => {
-                                *socket_lock = Some(socket);
-                            }
-                            Err(_socket_error) => {}
-                        }
-                    }
-                    drop(socket_lock);
+            if !message_to_log.message.ends_with("\n") {
+                message_to_log.message.push('\n');
+            }
 
-                    sleep(CONNECTION_RETRY);
-                }
-            });
+            if is_buffer_empty {
+                Self::try_send_channel_message(log_queue, message_to_log, tcp_stream)
+            } else {
+                Self::store_channel_message(log_queue, message_to_log);
+            }
         }
 
-        fn purge_dead_loggers_loop(&self) {
-            let emitted_senders = self.emitted_senders.clone();
 
-            spawn(move || {
-                loop {
-                    if is_faulted() { break };
-
-                    let mut emitted_senders = emitted_senders.lock().unwrap();
-                    emitted_senders.retain(|logger| {
-                        if let None = logger.upgrade() {
-                            false
-                        } else {
-                            true
+        fn socket_liveliness(tcp_stream: &mut Option<TcpStream>) {
+            if tcp_stream.is_none() {
+                match TcpStream::connect(LOG_SERVER_TCP_ADDRESS) {
+                    Ok(socket) => {
+                        if socket.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
+                            set_to_faulted("Cannot change timeout period")
                         }
-                    });
-
-                    drop(emitted_senders);
-
-                    sleep(DEAD_LOGGER_PURGE_PERIOD);
+                        *tcp_stream = Some(socket);
+                    }
+                    Err(_socket_error) => {}
                 }
-            });
+            }
         }
 
         fn try_send_from_buffer(
             log_queue: &mut VecDeque<LogMessage>,
-            socket: &Arc<Mutex<Option<TcpStream>>>
+            tcp_stream: &Option<TcpStream>,
+            urgent: bool
         ) -> bool {
             // Do nothing when `log_queue` is empty
             if log_queue.is_empty() { return true; }
 
-            let mut socket_lock = socket.lock().unwrap();
+            match tcp_stream.as_ref() {
+                None => false,
+                Some(mut tcp_stream) => {
+                    if tcp_stream.set_write_timeout(Some(
+                        if urgent {URGENT_WRITE_TIMEOUT} else {WRITE_TIMEOUT}
+                    )).is_err() {
+                        set_to_faulted("Cannot change timeout period")
+                    }
 
-            if socket_lock.is_none() { return false; }
-
-            let mut socket = socket_lock.take().unwrap();
-
-            while !log_queue.is_empty() {
-                if is_faulted() { break };
-
-                match socket.write(&log_queue.pop_front().unwrap().as_bytes().expect("TODO")) { //TODO ERROR HANDLING
-                    Ok(0) | Err(_) => { return false },
-                    Ok(_) => {}
-                };
+                    while !log_queue.is_empty() {
+                        match tcp_stream.write(&log_queue.pop_front().unwrap().as_bytes().unwrap()) {
+                            Ok(0) | Err(_) => { return false },
+                            Ok(_) => {}
+                        };
+                    }
+                    true
+                }
             }
-
-            *socket_lock = Some(socket);
-            true
         }
 
         fn try_send_channel_message(
             log_queue: &mut VecDeque<LogMessage>,
             msg_to_log: LogMessage,
-            socket: &Arc<Mutex<Option<TcpStream>>>
+            tcp_stream: &Option<TcpStream>
         ) {
             if is_faulted() {
                 Self::store_channel_message(log_queue, msg_to_log);
                 return;
             }
 
-            let mut socket_option = socket.lock().unwrap();
-
-            match socket_option.take() {
-                None => log_queue.push_back(msg_to_log),
+            match tcp_stream.as_ref() {
+                None => Self::store_channel_message(log_queue, msg_to_log),
                 Some(mut socket) => {
                     match socket.write(&msg_to_log.as_bytes().expect("TODO")) { //TODO ERROR HANDLING
                         Ok(0) | Err(_) => {
-                            drop(socket);
-                            log_queue.push_back(msg_to_log);
+                            Self::store_channel_message(log_queue, msg_to_log);
                         },
-                        Ok(_) => *socket_option = Some(socket)
+                        Ok(_) => {}
                     }
                 }
             }
-
-            drop(socket_option);
-            print!("");
         }
 
+        #[inline]
         fn store_channel_message(log_queue: &mut VecDeque<LogMessage>, msg_to_log: LogMessage) {
             log_queue.push_back(msg_to_log);
         }
     }
 
     pub struct ReliableLogSender {
-        wrapped_sender: Arc<Mutex<Option<Sender<LogMessage>>>>,
-        associated_logger: Weak<LoggerImpl>,
+        wrapped_sender: Sender<LogMessage>,
         prefix: String
     }
 
     impl ReliableLogSender {
         pub fn send(&self, value: &str, level: LogLevel) {
-            match &*self.wrapped_sender.lock().unwrap() {
-                None => {}
-                Some(wrapped_sender) => {
-                    if let Err(_send_error) = wrapped_sender.send(
-                        LogMessage {
-                            log_level: level,
-                            message: String::from(&self.prefix) + " " + &value
-                        }
-                    ) {
-                        println!("LogSender instance is dead");
-                    }
+            if let Err(_send_error) = self.wrapped_sender.send(
+                LogMessage {
+                    log_level: level,
+                    message: String::from(&self.prefix) + " " + &value
                 }
+            ) {
+                println!("LogSender instance is dead");
             }
         }
 
-        pub fn clone_with_new_prefix(&self, prefix: String) -> Self {
-            let logger = match self.associated_logger.upgrade() {
-                None => panic!("Logger is dead"),
-                Some(logger) => logger
-            };
+        fn no_op_sender() -> Self {
+            let (no_op_sender, _) = unbounded();
 
-            Logger { logger_inst: logger }.get_sender(prefix)
+            Self {
+                wrapped_sender: no_op_sender,
+                prefix: String::new(),
+            }
         }
     }
 
     impl Clone for ReliableLogSender {
         fn clone(&self) -> Self {
-            self.clone_with_new_prefix(self.prefix.clone())
+            Logger::get_sender(self.prefix.clone())
         }
     }
 }

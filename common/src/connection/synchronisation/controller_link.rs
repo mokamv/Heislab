@@ -6,7 +6,7 @@ use crate::messages::{Message, TimedMessage};
 use crossbeam_channel::{Receiver, Sender};
 use std::net::{Shutdown, TcpStream};
 use std::sync::{Arc, Mutex};
-use log::log_client::ReliableLogSender;
+use log::log_client::{Logger, ReliableLogSender};
 use crate::connection::client_pool::client_pool::ClientPool;
 use crate::connection::connection_handle::message_sender::MessageSender;
 use crate::connection::controller_state::ControllerStateNotifier;
@@ -41,13 +41,13 @@ impl ControllerLink {
     pub(crate) fn new(
         controller_state_notifier: ControllerStateNotifier,
         client_pool: ClientPool,
-        logger: ReliableLogSender
+        controller_id: ConnectionIdentifier
     ) -> Self {
 
         let backup_handle = ConnectionHandle::new_backup_connection_handler(
             controller_state_notifier,
             client_pool,
-            logger
+            Logger::get_sender(format!("[Controller {controller_id}][Link]")),
         );
 
         Self {

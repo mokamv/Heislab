@@ -1,5 +1,5 @@
 use crate::connection::client_pool::client_pool::ClientPool;
-use crate::connection::connection_handle::handle::ConnectionHandle;
+use crate::connection::connection_handle::handle::{ConnectionHandle, ConnectionIdentifier};
 use crate::connection::connection_init::init_error::ErrorKind::{IdentificationTimedOut, UnexpectedMessageType, WrongController};
 use crate::connection::connection_init::init_error::InitError;
 use crate::connection::connection_init::init_server::ConnectionType::{Client, Controller};
@@ -12,7 +12,7 @@ use crate::connection::unix_socket::udp_socket_sharing_port;
 use crate::messages::Message;
 use crate::messages::Message::ControllerAddress;
 use faulted::{is_faulted, set_to_faulted};
-use log::log_client::ReliableLogSender;
+use log::log_client::{Logger, ReliableLogSender};
 use log::LogLevel;
 use std::io::ErrorKind;
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -22,9 +22,10 @@ use std::time::Instant;
 pub fn init_udp_broadcasting(
     tcp_bound_to: SocketAddr,
     state: ControllerStateNotifier,
-    id: u8,
-    logger: ReliableLogSender,
+    controller_id: u8,
 ) {
+    let logger = Logger::get_sender(format!("[Controller {controller_id}][UDP]"));
+    
     logger.send(
         "Starting broadcasting TCP Socket address for clients to use over UDP",
         LogLevel::INFO,
@@ -46,7 +47,7 @@ pub fn init_udp_broadcasting(
 
                             match udp_socket.send_to(
                                 &ControllerAddress {
-                                    id,
+                                    id: controller_id,
                                     state: state.current_state(),
                                     address: tcp_bound_to,
                                 }.encode(), SERVER_UDP_BROADCAST_ADDR
@@ -81,12 +82,14 @@ pub fn init_controller_tcp_listening(
     controller_state: ControllerStateNotifier,
     controller_link: ControllerLink,
     client_pool: &ClientPool,
-    logger: ReliableLogSender,
+    controller_id: ConnectionIdentifier
 ) -> SocketAddr {
     let listener = TcpListener::bind(&SERVER_TCP_ADDRESSES[..]).unwrap();
     let listener_bound_to = listener.local_addr().unwrap();
 
     let client_pool = client_pool.clone();
+
+    let logger = Logger::get_sender(format!("[Controller {controller_id}][TCP]"));
 
     spawn(move || {
         'client_accept: while !is_faulted() {

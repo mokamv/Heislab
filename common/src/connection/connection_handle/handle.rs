@@ -11,7 +11,7 @@ use crate::messages::Message::KeepAlive;
 use crate::messages::{Message, TimedMessage, DEFAULT_MESSAGE, MESSAGE_SIZE};
 use crossbeam_channel::{select_biased, tick, unbounded, Receiver, Sender};
 use faulted::{is_faulted, set_to_faulted};
-use log::log_client::ReliableLogSender;
+use log::log_client::{Logger, ReliableLogSender};
 use log::LogLevel;
 use std::cmp::Ordering;
 use std::io::{ErrorKind, Read, Write};
@@ -145,11 +145,11 @@ pub struct ConnectionHandle {
 }
 
 impl ConnectionHandle {
-    fn uninitialized(logger: &ReliableLogSender, is_temporary: bool) -> Self {
+    fn uninitialized(logger: ReliableLogSender, is_temporary: bool) -> Self {
         let mut connection = Self {
             connection_state: Arc::new(RwLock::new(Disconnected)),
             channels: ConnectionTransmitters::init(),
-            logger: logger.clone(),
+            logger,
             is_temporary
         };
 
@@ -171,7 +171,7 @@ impl ConnectionHandle {
         stream: TcpStream,
         logger: ReliableLogSender,
     ) -> Self {
-        let connection = Self::uninitialized(&logger, true);
+        let connection = Self::uninitialized(logger, true);
 
         if let Err(_non_blocking_error) = stream.set_nonblocking(true) {
             set_to_faulted("Cannot set stream to non blocking");
@@ -187,7 +187,7 @@ impl ConnectionHandle {
         client_pool: ClientPool,
         logger: ReliableLogSender
     ) -> ConnectionHandle {
-        let handle =  Self::uninitialized(&logger, false);
+        let handle =  Self::uninitialized(logger, false);
 
         listen_and_synchronize(
             handle.get_handle_mutator(),
@@ -198,12 +198,18 @@ impl ConnectionHandle {
         handle
     }
 
-    pub fn new_server_connection_handler(logger: ReliableLogSender) -> Self {
-        Self::uninitialized(&logger, false)
+    pub fn new_server_side_connection_handler(client_id: ConnectionIdentifier) -> Self {
+        Self::uninitialized(
+            Logger::get_sender(format!("[ClientPool][{client_id}][TCP]")),
+            false
+        )
     }
 
-    pub fn new_client_connection_handler(logger: ReliableLogSender) -> Self {
-        let handle = Self::uninitialized(&logger, false);
+    pub fn new_client_side_connection_handler(client_id: ConnectionIdentifier) -> Self {
+        let handle = Self::uninitialized(
+            Logger::get_sender(format!("[Client][{client_id}]")),
+            false
+        );
         listen_for_controller_loop(handle.get_handle_mutator());
         handle
     }
