@@ -5,7 +5,6 @@ use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
 use std::collections::VecDeque;
 use driver_rust::elevio::elev::MotorDirection;
-const QUEUE_PENALTY: i32 = 20;
 
 pub struct ElevatorState {
     identifier: ConnectionIdentifier,
@@ -34,6 +33,22 @@ impl ElevatorState {
 
     pub fn set_state(&mut self, state: CabinState) {
         self.state = state;
+    }
+
+    pub fn get_state(&self) -> &CabinState {
+        &self.state
+    }
+
+    pub fn get_state_mut(&self) -> &CabinState {
+        &self.state
+    }
+
+    pub fn get_queue(&self) -> &VecDeque<ElevatorService> {
+        &self.queue
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.is_connected
     }
 
     pub fn can_receive(&self) -> bool {
@@ -92,83 +107,40 @@ impl ElevatorState {
         }
     }
 
-    pub fn cost(&self, call: CallRequest) -> i8 {
-        if !self.is_connected {
-            return i8::MAX; // Return max cost if elevator is disconnected
-        }
+    // The following functions are used for cost function algorithm in elevator_pool.rs.
+    // The cost function algorithm is used to assign hall requests to elevators.
 
-        let target_floor = call.target();
-        let current_floor = self.state.get_last_seen_floor();
-
-        // If idle, cost is purely distance-based
-        if !self.queue.is_empty() {
-            return if current_floor == target_floor {
-                i8::MIN // Already at the target floor
-            } else {
-                (current_floor as i8 - target_floor as i8).abs().min(i8::MAX - 1) // Cap at 126 to leave room for max cost
-            };
-        }
-
-        let current_service = self.queue.front().unwrap();
-
-        // Elevator is already servicing a request
-        let current_direction = current_service.direction();
-        let call_direction = call.direction();
-
-        // Check if call is in the same direction
-        let is_same_direction = match call_direction {
-            None => true,
-            Some(call_direction) => {
-                match current_direction {
-                    MotorDirection::Stop => true,
-                    dir => dir == call_direction
-                }
-            }
-        };
-
-
-        let mut cost = i8::MAX;
-
-        if is_same_direction {
-            let current_target = current_service.final_floor();
-
-            // Calculating cost based on position of target floor relative to the current path
-            cost = match current_direction {
-                MotorDirection::Up => {
-                    if target_floor >= current_floor && target_floor <= current_target {
-                        // On the way up
-                        (target_floor as i8 - current_floor as i8).abs()
-                    } else {
-                        // Will need to come back
-                        ((current_target as i8 - current_floor as i8).abs() +
-                            (current_target as i8 - target_floor as i8).abs())
-                    }
-                },
-                MotorDirection::Down => {
-                    if target_floor <= current_floor && target_floor >= current_target {
-                        // On the way down
-                        (current_floor as i8 - target_floor as i8).abs()
-                    } else {
-                        // Will need to come back
-                        ((current_floor as i8 - current_target as i8).abs() +
-                            (target_floor as i8 - current_target as i8).abs())
-                    }
-                },
-                MotorDirection::Stop => { // if elevator is idle
-                    (current_floor as i8 - target_floor as i8).abs()
-                }
-            };
-
-
-
-            let mut potential_penalty = 0;
-            for service in self.queue.iter() {
-                potential_penalty += service.number_of_stops();
-            }
-
-            cost += (potential_penalty as i32).min(QUEUE_PENALTY) as i8; // Penalty for number of stops planned
-        }
-
-        cost
+    pub fn get_total_floors(&self) -> usize { // FIX, do not hardcode
+        4
     }
+
+    pub fn get_hall_requests_cost_input(&self) -> Vec<Vec<bool>> {
+        let total_floors = self.get_total_floors();
+        let mut hall_requests = vec![vec![false, false]; total_floors];
+
+        for request in &self.queue {
+            if let CallRequest::Hall { floor, direction } = request {
+                match direction {
+                    MotorDirection::Up => hall_requests[*floor as usize][0] = true,
+                    MotorDirection::Down => hall_requests[*floor as usize][1] = true,
+                    MotorDirection::Stop => {}
+                }
+            }
+        }
+        hall_requests
+    }
+
+    pub fn get_cab_requests_cost_input(&self) -> Vec<bool> {
+        let total_floors = self.get_total_floors();
+        let mut cab_requests = vec![false; total_floors];
+
+        for request in &self.queue {
+            if let CallRequest::Cab { floor } = request {
+                cab_requests[*floor as usize] = true;
+            }
+        }
+
+        cab_requests
+    }
+
 }

@@ -197,4 +197,11 @@ impl CabinState {
             Ordering::Greater => MotorDirection::Down
         }
     }
+
+    pub fn get_direction(&self) -> MotorDirection {
+        match *self {
+            DoorOpen { .. } | DoorClose { .. } => MotorDirection::Stop,
+            Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor)
+        }
+    }
 }

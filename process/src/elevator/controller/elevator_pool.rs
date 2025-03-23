@@ -1,9 +1,15 @@
+use std::process::Command;
+
 use crate::elevator::controller::elevator_state::ElevatorState;
 use common::connection::client_pool::client_pool::{ClientPool, Target};
 use common::connection::connection_handle::handle::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
 use crate::elevator::controller::light_control::LightControl;
+use std::collections::HashMap;
+use std::collections::HashMap;
+use serde_json::json;
+
 
 pub struct ElevatorPool {
     pool: Vec<ElevatorState>,
@@ -109,16 +115,58 @@ impl ElevatorPool {
         }
     }
 
-    fn best_elevator(&mut self, request: CallRequest) -> &mut ElevatorState {
-        #[cfg(debug_assertions)]
-        if let CallRequest::Cab {..} = request { panic!("Cannot call this function with a cab call") }
+    pub fn execute_hall_request_assigner(&self) -> Result<HashMap<String, Vec<Vec<bool>>>, String> {
+        let hall_requests: Vec<Vec<bool>> = self.pool.iter()
+            .map(|elevator| elevator.get_hall_requests_cost_input())
+            .collect();
 
+        let states: HashMap<String, _> = self.pool.iter()
+            .map(|elevator| {
+                let state = elevator.get_state();
+                let id = elevator.identifier().to_string();
+                
+                let behaviour = match state {
+                    CabinState::DoorClose { current_floor } => "idle",
+                    CabinState::Between { from_floor, to_floor } => "moving",
+                    CabinState::DoorOpen => "doorOpen",
+                };
 
-        self.pool
-            .iter_mut()
-            .min_by(|value_a, value_b| {
-                value_a.cost(request).cmp(&value_b.cost(request))
+                let floor = state.get_last_seen_floor();
+
+                let direction = match state.get_direction() {
+                    MotorDirection::Up => "up",
+                    MotorDirection::Down => "down",
+                    MotorDirection::Stop => "stop",
+                };
+
+                let cab_requests = state.get_cab_requests_cost_input();
+
+                (id, json!({
+                    "behaviour": behaviour,
+                    "floor": floor,
+                    "direction": direction,
+                    "cabRequests": cab_requests,
+                }))
             })
-            .unwrap()
+            .collect();
+
+        let input_json = json!({
+            "hallRequests": hall_requests,
+            "states": states,
+        }).to_string();
+        
+        let output = Command::new("hall_request_assigner")
+            .arg("--input")
+            .arg(input_json)
+            .output()
+            .expect("Failed to run hall request assigner");
+
+        if output.status.success() {
+            let output_json = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+            let hall_requests_assignments: HashMap<String, Vec<Vec<bool>>> = serde_json::from_str(&output_json).map_err(|e| e.to_string())?;
+            Ok(hall_requests_assignments)
+        } else {
+            Err(String::from_utf8(output.stderr).map_err(|e| e.to_string())?)
+        }
     }
 }
