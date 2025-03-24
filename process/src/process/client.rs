@@ -30,17 +30,29 @@ impl Process {
         println!("Elevator started");
         loop {
             select! {
-                recv(try_init_after) -> _ => client_state.elevator_hw.init_if_is_not_yet(),
+                recv(try_init_after) -> _ => {
+                    let init_result = client_state.elevator_hw.init_if_is_not_yet();
+                    if let Err(e) = init_result {
+                        eprintln!("Error initializing elevator hardware: {:?}", e);
+                    }
+                },
                 recv(message_receiver) -> message => {
-                    let message = message.unwrap();
-                    client_state.handle_message_event(message);
+                    match message {
+                        Ok(message) => client_state.handle_message_event(message),
+                        Err(e) => eprintln!("Error receiving message: {:?}", e),
+                    }
                 },
                 recv(event_receiver) -> event => {
-                    let event = event.unwrap();
-                    client_state.handle_elevator_event(event);
+                    match event {
+                        Ok(event) => client_state.handle_elevator_event(event),
+                        Err(e) => eprintln!("Error receiving elevator event: {:?}", e),
+                    }
                 },
-                recv(close_door_receiver) -> _ => {
-                    client_state.handle_close_door_event()
+                recv(close_door_receiver) -> event => {
+                    match event {
+                        Ok(_) => client_state.handle_close_door_event(),
+                        Err(e) => eprintln!("Error receiving close door event: {:?}", e),
+                    }
                 }
             }
         }
@@ -53,6 +65,7 @@ struct ClientState {
     elevator_hw: ElevatorHardware,
     message_sender: MessageSender,
     last_state: CabinState,
+    cab_called: Vec<bool>,
 }
 
 
@@ -99,14 +112,18 @@ impl ClientState {
 
         if self.is_auth {
             self.message_sender.send(elevator_event);
-        } else {
-            //todo!("OFFLINE MODE");
-        }
+        } 
     }
 
     fn handle_close_door_event(&mut self) {
         let new_state = self.elevator_hw.handle_close_door();
-        self.send_updated_state(new_state);
+        self.update_cab_called_vec();
+        if is_auth{
+            self.send_updated_state(new_state);
+        } else{
+            self.next_call_disconnected(new_state); 
+        }
+        
     }
 
     fn send_updated_state(&mut self, cabin_state: CabinState) {
@@ -116,5 +133,15 @@ impl ClientState {
                 self.message_sender.send(self.last_state);
             }
         }
+    }
+    fn update_cab_called_vec(event){//TODO
+        if event == ElevatorEvent::CallButton && event.CallType == Cab { //Cab = 2 in CallType enum
+            cab_called[event.floor] = true; //floor takes values from ????????????????????? https://github.com/LeVraiPiroZz/driver-rust
+        }
+        
+    }
+    handle_newcall_disconnected(new_state){ // TODO
+        go_to_floor = first true in cab_called (vec<bool>);
+        self.elevator_hw.go_to_floor(go_to_floor);
     }
 }
