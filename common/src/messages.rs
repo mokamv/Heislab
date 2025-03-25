@@ -1,16 +1,210 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::ops::Range;
 use std::time::Instant;
 use driver_rust::elevio::elev::{CallType, ElevatorEvent, MotorDirection};
-use Message::{ClientStopButton, Connected, ControllerAuth, Disconnected};
-use crate::connection::connection_handle::channel::{AliveStatus, AliveValue};
-use crate::messages::Message::{Authenticated, ClientAuth, ClientButtonCall, ClientObstructed, ClientCabinState, ControllerAddress, ControllerCurrentState, GotoFloor, KeepAlive, LightControl};
-
-type RawMessage = [u8; MESSAGE_SIZE];
-pub const MESSAGE_SIZE: usize = 32;
-pub const DEFAULT_MESSAGE: [u8; MESSAGE_SIZE] = [0u8; MESSAGE_SIZE];
-use crate::connection::controller_state::ControllerState;
-use crate::data_struct::{CabinState, CallRequest};
+use Message::{ClientStopButton, Disconnected};
+use crate::connection::event_handle::handle_state::ConnectionIdentifier;
+use crate::messages::Message::{Connected, ClientButtonCall, ClientObstructed, ClientCabinState, ControllerAddress, ControllerStateSync, GotoFloor, KeepAlive, LightControl, Ack};
+use crate::data_struct::{CabinState, CallRequest, ControllerState};
 use crate::data_struct::CallRequest::{Cab, Hall};
+
+const RAW_PAYLOAD_HEADER_SIZE: usize = 2 + 2 + size_of::<usize>() + size_of::<usize>();
+pub const RAW_MESSAGE_SIZE: usize = 32;
+pub const RAW_PAYLOAD_SIZE: usize = RAW_PAYLOAD_HEADER_SIZE + RAW_MESSAGE_SIZE;
+pub type RawPayload = [u8; RAW_MESSAGE_SIZE + RAW_PAYLOAD_HEADER_SIZE];
+pub type RawMessage = [u8; RAW_MESSAGE_SIZE];
+pub const UNINIT_RAW_PAYLOAD: RawPayload = [0u8; RAW_PAYLOAD_SIZE];
+pub const UNINIT_RAW_MESSAGE: RawMessage = [0u8; RAW_MESSAGE_SIZE];
+
+const SENDER_RANGE: Range<usize> = 0..2;
+const DESTINATION_RANGE: Range<usize> = SENDER_RANGE.end..SENDER_RANGE.end + 2;
+const ACK_RANGE: Range<usize> = DESTINATION_RANGE.end..DESTINATION_RANGE.end + size_of::<usize>();
+const HASH_RANGE: Range<usize> = ACK_RANGE.end..ACK_RANGE.end + size_of::<usize>();
+const MESSAGE_RANGE: Range<usize> = HASH_RANGE.end..HASH_RANGE.end + RAW_MESSAGE_SIZE;
+
+
+
+#[derive(Debug, Copy, Clone)]
+pub struct Payload {
+    ack: usize, // 8 bit to store
+    hash: usize, // 8 bit to store
+    sender: PayloadNode, // 2 bits
+    destination: PayloadNode, // 2 bits
+    message: Message, // 32 bits, might change.
+}
+
+impl Payload {
+    pub fn new_uninit(
+        message: Message,
+        sender: PayloadNode,
+        destination: PayloadNode,
+    ) -> Payload {
+        Self {
+            ack: 0,
+            hash: 0,
+            sender,
+            destination,
+            message,
+        }
+    }
+    
+    pub fn ack_from(payload: Payload) -> Self {
+        Self {
+            ack: payload.ack,
+            hash: payload.hash,
+            sender: payload.destination,
+            destination: payload.sender,
+            message: Ack,
+        }
+    }
+
+    pub fn set_ack(&mut self, ack: usize) {
+        self.ack = ack;
+    }
+
+    pub fn set_hash(&mut self, hash: usize) {
+        self.hash = hash;
+    }
+    pub fn ack(&self) -> usize {
+        self.ack
+    }
+    pub fn hash(&self) -> usize {
+        self.hash
+    }
+    pub fn destination(&self) -> PayloadNode {
+        self.destination
+    }
+    pub fn sender(&self) -> PayloadNode {
+        self.sender
+    }
+
+    pub fn message(&self) -> Message {
+        self.message
+    }
+
+    pub fn encode(&self) -> RawPayload {
+        let mut raw_payload: RawPayload = [0u8; RAW_PAYLOAD_SIZE];
+
+        raw_payload[SENDER_RANGE]
+            .copy_from_slice(&self.sender.encode());
+        raw_payload[DESTINATION_RANGE]
+            .copy_from_slice(&self.destination.encode());
+        raw_payload[ACK_RANGE]
+            .copy_from_slice(&self.ack.to_be_bytes());
+        raw_payload[HASH_RANGE]
+            .copy_from_slice(&self.hash.to_be_bytes());
+        raw_payload[MESSAGE_RANGE]
+            .copy_from_slice(&self.message.encode());
+
+        raw_payload
+    }
+
+    pub fn decode_payload(raw_payload: &RawPayload) -> Result<Self, ()> {
+        assert_eq!(raw_payload.len(), RAW_PAYLOAD_SIZE);
+
+        let message = Message::decode_message(
+            raw_payload[MESSAGE_RANGE].try_into().unwrap()
+        )?;
+
+        let sender = PayloadNode::decode(
+            raw_payload[SENDER_RANGE].try_into().unwrap()
+        );
+
+        let destination = PayloadNode::decode(
+            raw_payload[DESTINATION_RANGE].try_into().unwrap()
+        );
+
+        let ack = usize::from_be_bytes(
+            raw_payload[ACK_RANGE].try_into().unwrap()
+        );
+
+        let hash = usize::from_be_bytes(
+            raw_payload[HASH_RANGE].try_into().unwrap()
+        );
+
+        Ok(Self {
+            hash,
+            ack,
+            sender,
+            destination,
+            message,
+        })
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum PayloadNode {
+    Sync,
+    Client { client_id: ConnectionIdentifier },
+    Controller { controller_id: ConnectionIdentifier }
+}
+
+impl PayloadNode {
+    fn encode(&self) -> [u8; 2] {
+        let mut raw_payload_node = [0u8; 2];
+        match self {
+            PayloadNode::Sync => raw_payload_node[0] = 1,
+            PayloadNode::Client { client_id } => {
+                raw_payload_node[0] = 2;
+                raw_payload_node[1] = *client_id;
+            }
+            PayloadNode::Controller { controller_id } => {
+                raw_payload_node[0] = 3;
+                raw_payload_node[1] = *controller_id;
+            }
+        }
+        raw_payload_node
+    }
+
+    fn decode(raw_payload_node: &[u8; 2]) -> Self {
+        match raw_payload_node[0] {
+            1 => PayloadNode::Sync,
+            2 => PayloadNode::Client { client_id: raw_payload_node[1] },
+            3 => PayloadNode::Controller { controller_id: raw_payload_node[1] },
+            _ => unreachable!()
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct TimedPayload {
+    timestamp: Instant,
+    payload: Payload,
+}
+
+impl TimedPayload {
+    pub fn of(payload: Payload) -> Self {
+        Self {
+            timestamp: Instant::now(),
+            payload,
+        }
+    }
+
+    pub fn from(
+        timed_message: TimedMessage,
+        sender: PayloadNode,
+        destination: PayloadNode,
+    ) -> Self {
+        Self {
+            timestamp: timed_message.timestamp,
+            payload: Payload {
+                ack: 0,
+                hash: 0,
+                sender,
+                destination,
+                message: timed_message.message,
+            },
+        }
+    }
+
+    pub fn timestamp(&self) -> Instant {
+        self.timestamp
+    }
+
+    pub fn payload(&self) -> Payload {
+        self.payload
+    }
+}
 
 #[derive(Debug)]
 pub struct TimedMessage {
@@ -30,7 +224,7 @@ impl TimedMessage {
         self.timestamp
     }
 
-    pub fn message(self) -> Message {
+    pub fn message(&self) -> Message {
         self.message
     }
 }
@@ -39,6 +233,7 @@ impl TimedMessage {
 #[derive(Debug, Copy, Clone)]
 pub enum Message {
     KeepAlive,
+    Ack,
 
     // Client messages
     ClientObstructed { is_obstructed: bool },
@@ -53,13 +248,11 @@ pub enum Message {
 
     // Connection State flow
     Connected,
-    Authenticated,
     Disconnected,
-    ClientAuth{ client_id: u8 }, // Client identifier
 
     // Synchronisation messages
-    ControllerAuth { controller_id: u8 },
-    ControllerCurrentState { id: u8, state: ControllerState },
+    ControllerStateSync { state: ControllerState },
+
 }
 
 impl Message {
@@ -70,27 +263,36 @@ impl Message {
         } else { false }
     }
 
-    pub fn encode(self) -> RawMessage {
-        let mut raw_message = [0u8; MESSAGE_SIZE];
+    pub fn is_ack(&self) -> bool {
+        if let Ack = self {
+            true
+        } else { false }
+    }
+
+    pub(crate) fn encode(self) -> RawMessage {
+        let mut raw_message = [0u8; RAW_MESSAGE_SIZE];
         match self {
             KeepAlive => {}
+            Ack => {
+                raw_message[0] = 1
+            }
 
             // Client encode
             ClientObstructed { is_obstructed } => {
-                raw_message[0] = 1;
+                raw_message[0] = 64;
                 raw_message[1] = is_obstructed as u8
 
             },
             ClientCabinState { cabin_state } => {
-                raw_message[0] = 2;
+                raw_message[0] = 65;
                 raw_message[1..4].copy_from_slice(&cabin_state.encode());
             },
             ClientButtonCall { pressed } => {
-                raw_message[0] = 3;
+                raw_message[0] = 66;
                 raw_message[1..4].copy_from_slice(&pressed.encode());
             },
             ClientStopButton { is_pressed } => {
-                raw_message[0] = 4;
+                raw_message[0] = 67;
                 raw_message[1] = is_pressed as u8;
             }
 
@@ -123,39 +325,28 @@ impl Message {
             },
 
             // State flow
-            Connected => raw_message[0] = 160,
             Disconnected => raw_message[0] = 161,
-            Authenticated => raw_message[0] = 162,
-            ClientAuth { client_id } => {
-                raw_message[0] = 163;
-                raw_message[1] = client_id
-            }
-
+            Connected => raw_message[0] = 162,
 
             // Synchro
-            ControllerAuth { controller_id } => {
-                raw_message[0] = 192;
-                raw_message[1] = controller_id;
-            }
-
-            ControllerCurrentState { id, state } => {
+            ControllerStateSync { state } => {
                 raw_message[0] = 193;
-                raw_message[1] = id;
-                raw_message[2] = state.into();
+                raw_message[1] = state.into();
             }
         }
 
         raw_message
     }
-    pub fn decode_message(raw_message: &RawMessage) -> Self {
-        match raw_message[0] {
+    pub(crate) fn decode_message(raw_message: &RawMessage) -> Result<Self, ()> {
+        Ok(match raw_message[0] {
             0 => KeepAlive,
+            1 => Ack,
 
             // Client messages
-            1 => ClientObstructed { is_obstructed: raw_message[1] != 0 },
-            2 => ClientCabinState { cabin_state: CabinState::decode(&raw_message[1..4]) },
-            3 => ClientButtonCall { pressed: CallRequest::decode(&raw_message[1..4]) },
-            4 => ClientStopButton { is_pressed: raw_message[1] != 0 },
+            64 => ClientObstructed { is_obstructed: raw_message[1] != 0 },
+            65 => ClientCabinState { cabin_state: CabinState::decode(&raw_message[1..4]) },
+            66 => ClientButtonCall { pressed: CallRequest::decode(&raw_message[1..4]) },
+            67 => ClientStopButton { is_pressed: raw_message[1] != 0 },
             
             // Controller messages
             128 => ControllerAddress {
@@ -180,19 +371,18 @@ impl Message {
             130 => GotoFloor { go_to_floor: raw_message[1] },
 
 
-            160 => Connected,
             161 => Disconnected,
-            162 => Authenticated,
-            163 => ClientAuth { client_id: raw_message[1] },
+            162 => Connected,
 
-            192 => ControllerAuth { controller_id: raw_message[1] },
-            193 => ControllerCurrentState {
-                id: raw_message[1],
-                state: raw_message[2].into(),
+            193 => ControllerStateSync {
+                state: raw_message[1].into(),
             },
 
-            code => panic!("Bad message code received: {code}"),
-        }
+            code => {
+                eprintln!("Bad message code received: {code}");
+                Err(())?
+            },
+        })
     }
 }
 
@@ -209,16 +399,6 @@ impl From<ElevatorEvent> for Message {
             ElevatorEvent::FloorSensor { .. } => KeepAlive, // Use keep alive as a non-message.
             ElevatorEvent::Obstruction { obstructed } => ClientObstructed { is_obstructed: obstructed },
             ElevatorEvent::StopButton { stopped } => ClientStopButton { is_pressed: stopped }
-        }
-    }
-}
-
-impl From<AliveStatus> for Message {
-    fn from(value: AliveStatus) -> Self {
-        match value.value() {
-            AliveValue::Connected => Connected,
-            AliveValue::Disconnected => Disconnected,
-            AliveValue::ConnectedAndAuthenticated => Authenticated
         }
     }
 }

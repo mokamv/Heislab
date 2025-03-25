@@ -1,9 +1,10 @@
 use driver_rust::elevio::elev::{CallType, MotorDirection};
 use std::cmp::Ordering;
 
-use crate::data_struct::CabinState::{Between, DoorOpen};
+use crate::data_struct::CabinState::{BetweenFloors, OpenedDoor};
 use crate::data_struct::CallRequest::{Cab, Hall};
-use CabinState::DoorClose;
+use CabinState::Idle;
+use crate::data_struct::ControllerState::{Backup, Master, MasterSteppingDown};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CallRequest {
@@ -88,14 +89,14 @@ impl CallRequest {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CabinState {
-    DoorOpen { current_floor: u8 },
-    DoorClose { current_floor: u8 }, // This is the idle at floor
-    Between { from_floor: u8, to_floor: u8 }
+    OpenedDoor { current_floor: u8 },
+    Idle { current_floor: u8 }, // This is the idle at floor
+    BetweenFloors { from_floor: u8, to_floor: u8 }
 }
 
 impl Default for CabinState {
     fn default() -> Self {
-        Between { from_floor: u8::MAX, to_floor: 0 }
+        BetweenFloors { from_floor: u8::MAX, to_floor: 0 }
     }
 }
 
@@ -103,15 +104,15 @@ impl CabinState {
     pub(crate) fn encode(&self) -> [u8; 3] {
         let mut message = [0u8; 3];
         match *self {
-            DoorOpen { current_floor } => {
+            OpenedDoor { current_floor } => {
                 message[0] = 0;
                 message[1] = current_floor;
             }
-            DoorClose { current_floor } => {
+            Idle { current_floor } => {
                 message[0] = 1;
                 message[1] = current_floor;
             }
-            Between { from_floor, to_floor } => {
+            BetweenFloors { from_floor, to_floor } => {
                 message[0] = 2;
                 message[1] = from_floor;
                 message[2] = to_floor;
@@ -123,46 +124,46 @@ impl CabinState {
     pub(super) fn decode(raw_cabin_state: &[u8]) -> Self {
         assert_eq!(raw_cabin_state.len(), 3);
         match raw_cabin_state[0] {
-            0 => DoorOpen { current_floor: raw_cabin_state[1] },
-            1 => DoorClose { current_floor: raw_cabin_state[1] },
-            2 => Between { from_floor: raw_cabin_state[1], to_floor: raw_cabin_state[2] },
+            0 => OpenedDoor { current_floor: raw_cabin_state[1] },
+            1 => Idle { current_floor: raw_cabin_state[1] },
+            2 => BetweenFloors { from_floor: raw_cabin_state[1], to_floor: raw_cabin_state[2] },
             _ => unreachable!()
         }
     }
 
     pub fn is_between(&self) -> bool {
-        if let Between { .. } = *self {
+        if let BetweenFloors { .. } = *self {
             true
         } else { false }
     }
 
     pub fn is_door_open(&self) -> bool {
-        if let DoorOpen { .. } = *self {
+        if let OpenedDoor { .. } = *self {
             true
         } else { false }
     }
 
     pub fn is_idle(&self) -> bool {
-        if let DoorClose { .. } = *self {
+        if let Idle { .. } = *self {
             true
         } else { false }
     }
 
     pub fn increment_between(&mut self) {
-        let Between { from_floor, to_floor } = *self else { unreachable!() };
+        let BetweenFloors { from_floor, to_floor } = *self else { unreachable!() };
 
         *self = match Self::get_direction_from_to(from_floor, to_floor) {
-            MotorDirection::Down => Between { from_floor: to_floor, to_floor: to_floor - 1 },
-            MotorDirection::Up => Between { from_floor: to_floor, to_floor: to_floor + 1 },
+            MotorDirection::Down => BetweenFloors { from_floor: to_floor, to_floor: to_floor - 1 },
+            MotorDirection::Up => BetweenFloors { from_floor: to_floor, to_floor: to_floor + 1 },
             MotorDirection::Stop => unreachable!()
         }
     }
 
     pub fn get_current_floor_relative_to(&self, target: u8) -> u8 {
         match *self {
-            DoorOpen { current_floor }
-            | DoorClose { current_floor } => current_floor,
-            Between { from_floor, to_floor } => {
+            OpenedDoor { current_floor }
+            | Idle { current_floor } => current_floor,
+            BetweenFloors { from_floor, to_floor } => {
                 let from_distance = (target as i32 - from_floor as i32).abs();
                 let to_distance = (target as i32 - to_floor as i32).abs();
 
@@ -177,9 +178,9 @@ impl CabinState {
 
     pub fn get_last_seen_floor(&self) -> u8 {
         match *self {
-            DoorOpen { current_floor }
-            | DoorClose { current_floor }
-            | Between { from_floor: current_floor, .. } => current_floor
+            OpenedDoor { current_floor }
+            | Idle { current_floor }
+            | BetweenFloors { from_floor: current_floor, .. } => current_floor
         }
     }
     pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
@@ -195,6 +196,36 @@ impl CabinState {
             Ordering::Less => MotorDirection::Up,
             Ordering::Equal => MotorDirection::Stop,
             Ordering::Greater => MotorDirection::Down
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ControllerState {
+    /// Currently acting as backup, receiving controller_link message from the current master
+    Backup,
+    /// Currently a master in the process of being downgraded to a backup, this is the state during reconciliation
+    MasterSteppingDown,
+    /// Currently a master, handles clients and synchronise every backup.
+    Master,
+}
+
+impl From<u8> for ControllerState {
+    fn from(value: u8) -> Self {
+        match value {
+            u8::MIN => Master,
+            u8::MAX => Backup,
+            _ => MasterSteppingDown
+        }
+    }
+}
+
+impl Into<u8> for ControllerState {
+    fn into(self) -> u8 {
+        match self {
+            Backup => u8::MAX,
+            MasterSteppingDown => 127,
+            Master => u8::MIN
         }
     }
 }
