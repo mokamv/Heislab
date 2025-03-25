@@ -115,7 +115,7 @@ impl ElevatorPool {
         }
     }
 
-    pub fn execute_hall_request_assigner(&self) -> Result<HashMap<String, Vec<Vec<bool>>>, String> {
+    pub fn execute_hall_request_assigner(&self){
         let hall_requests: Vec<Vec<bool>> = self.pool.iter()
             .map(|elevator| elevator.get_hall_requests_cost_input())
             .collect();
@@ -126,7 +126,7 @@ impl ElevatorPool {
                 let id = elevator.identifier().to_string();
                 
                 let behaviour = match state {
-                    CabinState::DoorClose { current_floor } => "idle",
+                    CabinState::Idle { current_floor } => "idle",
                     CabinState::Between { from_floor, to_floor } => "moving",
                     CabinState::DoorOpen => "doorOpen",
                 };
@@ -168,5 +168,33 @@ impl ElevatorPool {
         } else {
             Err(String::from_utf8(output.stderr).map_err(|e| e.to_string())?)
         }
+
+        assign_updated_elevator_states(&self, hall_requests_assignments);
+    }
+
+    fn assign_updated_elevator_states(&mut self, hall_requests_assignments: HashMap<String, Vec<Vec<bool>>>) {
+    for (elevator_id, hall_requests) in hall_requests_assignments {
+        let elevator_id = ConnectionIdentifier::from(elevator_id);
+        let elevator = self.get_elevator(elevator_id);
+
+        elevator.clear_hall_requests();
+
+        for (floor, requests) in hall_requests.iter().enumerate() {
+            if requests[0] {
+                let new_request = CallRequest::Hall {
+                    floor: floor as u8,
+                    direction: MotorDirection::Up,
+                };
+                elevator.add_new_request(new_request);
+            }
+            if requests[1] {
+                let new_request = CallRequest::Hall {
+                    floor: floor as u8,
+                    direction: MotorDirection::Down,
+                };
+                elevator.add_new_request(new_request);
+            }
+        }
+        };
     }
 }

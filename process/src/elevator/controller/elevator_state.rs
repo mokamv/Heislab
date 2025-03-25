@@ -55,7 +55,7 @@ impl ElevatorState {
         ! self.state.is_door_open()
     }
 
-    pub(super) fn add_and_get_new_target(&mut self, request: CallRequest) {
+    pub(super) fn add_new_request(&mut self, request: CallRequest) {
         // On empty queue (idling elevator)
         if self.queue.is_empty() {
             debug_assert!(self.state.is_idle(), "An empty queue must coincide with idling");
@@ -80,6 +80,10 @@ impl ElevatorState {
 
             self.queue.push_back(ElevatorService::from(request, self.state.get_last_seen_floor()));
         }
+    }
+
+    pub fn clear_hall_requests(&mut self) {
+        self.queue.retain(|service| ! service.is_cab_only());
     }
 
     pub fn get_next_command(&self) -> Option<Message> {
@@ -107,12 +111,12 @@ impl ElevatorState {
         }
     }
 
-    // The following functions are used for cost function algorithm in elevator_pool.rs.
-    // The cost function algorithm is used to assign hall requests to elevators.
-
     pub fn get_total_floors(&self) -> usize { // FIX, do not hardcode
         4
     }
+
+    // The following functions are used for cost function algorithm in elevator_pool.rs.
+    // The cost function algorithm is used to assign hall requests to elevators.
 
     pub fn get_hall_requests_cost_input(&self) -> Vec<Vec<bool>> {
         let total_floors = self.get_total_floors();
@@ -142,5 +146,4 @@ impl ElevatorState {
 
         cab_requests
     }
-
 }
