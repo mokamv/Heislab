@@ -115,20 +115,21 @@ impl ElevatorPool {
         }
     }
 
-    pub fn execute_hall_request_assigner(&self){
+    pub fn execute_hall_request_assigner(&self) -> Result<(), String> {
         let hall_requests: Vec<Vec<bool>> = self.pool.iter()
-            .map(|elevator| elevator.get_hall_requests_cost_input())
+            .map(|elevator| elevator.get_hall_requests())
             .collect();
 
-        let states: HashMap<String, _> = self.pool.iter()
+        let states: HashMap<String, serde_json::Value> = self.pool.iter()
             .map(|elevator| {
                 let state = elevator.get_state();
                 let id = elevator.identifier().to_string();
                 
                 let behaviour = match state {
-                    CabinState::Idle { current_floor } => "idle",
-                    CabinState::Between { from_floor, to_floor } => "moving",
-                    CabinState::DoorOpen => "doorOpen",
+                    CabinState::Idle { .. } => "idle",
+                    CabinState::Between { .. } => "moving",
+                    CabinState::DoorOpen { .. } => "doorOpen",
+                    CabinState::Init => "init"
                 };
 
                 let floor = state.get_last_seen_floor();
@@ -139,7 +140,7 @@ impl ElevatorPool {
                     MotorDirection::Stop => "stop",
                 };
 
-                let cab_requests = state.get_cab_requests_cost_input();
+                let cab_requests = elevator.get_cab_requests();
 
                 (id, json!({
                     "behaviour": behaviour,
@@ -150,51 +151,55 @@ impl ElevatorPool {
             })
             .collect();
 
+        // Create input JSON for hall request assigner
         let input_json = json!({
             "hallRequests": hall_requests,
             "states": states,
         }).to_string();
         
+        // Execute hall request assigner
         let output = Command::new("hall_request_assigner")
             .arg("--input")
             .arg(input_json)
             .output()
             .expect("Failed to run hall request assigner");
 
-        if output.status.success() {
-            let output_json = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-            let hall_requests_assignments: HashMap<String, Vec<Vec<bool>>> = serde_json::from_str(&output_json).map_err(|e| e.to_string())?;
-            Ok(hall_requests_assignments)
-        } else {
-            Err(String::from_utf8(output.stderr).map_err(|e| e.to_string())?)
+        if !output.status.success() {
+            return Err(String::from_utf8(output.stderr)
+                .map_err(|e| e.to_string())?);
         }
+    
+        let output_str = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+        let hall_requests_assignments: HashMap<String, Vec<Vec<bool>>> = serde_json::from_str(&output_str).map_err(|e| e.to_string())?;
 
-        assign_updated_elevator_states(&self, hall_requests_assignments);
+        self.assign_updated_elevator_states(hall_requests_assignments);
+
+        Ok(())
     }
 
     fn assign_updated_elevator_states(&mut self, hall_requests_assignments: HashMap<String, Vec<Vec<bool>>>) {
-    for (elevator_id, hall_requests) in hall_requests_assignments {
-        let elevator_id = ConnectionIdentifier::from(elevator_id);
-        let elevator = self.get_elevator(elevator_id);
+        for (elevator_id, hall_requests) in hall_requests_assignments {
+            let elevator_id = ConnectionIdentifier::from(elevator_id);
+            let elevator = self.get_elevator(elevator_id);
 
-        elevator.clear_hall_requests();
+            // Clear current hall requests
+            elevator.clear_hall_requests();
 
-        for (floor, requests) in hall_requests.iter().enumerate() {
-            if requests[0] {
-                let new_request = CallRequest::Hall {
-                    floor: floor as u8,
-                    direction: MotorDirection::Up,
-                };
-                elevator.add_new_request(new_request);
-            }
-            if requests[1] {
-                let new_request = CallRequest::Hall {
-                    floor: floor as u8,
-                    direction: MotorDirection::Down,
-                };
-                elevator.add_new_request(new_request);
+            // Add new hall requests
+            for (floor, requests) in hall_requests.iter().enumerate() {
+                if requests[0] { // Up request
+                    elevator.add_request(CallRequest::Hall {
+                        floor: floor as u8,
+                        direction: MotorDirection::Up,
+                    });
+                }
+                if requests[1] { // Down request
+                    elevator.add_request(CallRequest::Hall {
+                        floor: floor as u8,
+                        direction: MotorDirection::Down,
+                    });
+                }
             }
         }
-        };
     }
 }
