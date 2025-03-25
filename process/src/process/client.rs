@@ -4,7 +4,7 @@ use common::connection::connection_handle::message_sender::MessageSender;
 use common::data_struct::CabinState;
 use common::messages::Message;
 use crossbeam_channel::{after, select};
-use driver_rust::elevio::elev::{ElevatorEvent,MotorDirection};
+use driver_rust::elevio::elev::{ElevatorEvent, CallType};
 use std::time::Duration;
 
 const FLOOR_COUNT: u8 = 4;
@@ -25,6 +25,7 @@ impl Process {
             is_auth: false,
             message_sender: self.client_handle.take_sender(),
             last_state: Default::default(),
+            cab_called: vec![false; FLOOR_COUNT as usize],
         };
 
         println!("Elevator started");
@@ -32,27 +33,17 @@ impl Process {
             select! {
                 recv(try_init_after) -> _ => {
                     let init_result = client_state.elevator_hw.init_if_is_not_yet();
-                    if let Err(e) = init_result {
-                        eprintln!("Error initializing elevator hardware: {:?}", e); //calling the logger instead???????????????
-                    }
                 },
                 recv(message_receiver) -> message => {
-                    match message {
-                        Ok(message) => client_state.handle_message_event(message),
-                        Err(e) => eprintln!("Error receiving message: {:?}", e),
-                    }
+                    let message = message.unwrap();
+                    client_state.handle_message_event(message);
                 },
                 recv(event_receiver) -> event => {
-                    match event {
-                        Ok(event) => client_state.handle_elevator_event(event),
-                        Err(e) => eprintln!("Error receiving elevator event: {:?}", e),
-                    }
+                    let event = event.unwrap();
+                    client_state.handle_elevator_event(event);
                 },
-                recv(close_door_receiver) -> event => {
-                    match event {
-                        Ok(_) => client_state.handle_close_door_event(),
-                        Err(e) => eprintln!("Error receiving close door event: {:?}", e),
-                    }
+                recv(close_door_receiver) -> _ => {
+                    client_state.handle_close_door_event()
                 }
             }
         }
@@ -65,7 +56,7 @@ struct ClientState {
     elevator_hw: ElevatorHardware,
     message_sender: MessageSender,
     last_state: CabinState,
-    mut cab_called: Vec<bool>,
+    cab_called: Vec<bool>,
 }
 
 
@@ -140,30 +131,28 @@ impl ClientState {
 
 
 impl ClientState{
-    fn update_cab_called_vec(&mut self, event){//TODO
-        
-        if event == ElevatorEvent::CallButton && event.CallType == Cab { //Cab = 2 in CallType enum
-            cab_called[event.floor as usize] = true; //floor takes values from ????????????????????? https://github.com/LeVraiPiroZz/driver-rust
-        }    
-    }
+    fn update_cab_called_vec(&mut self, event: ElevatorEvent){
+        match event { 
+            ElevatorEvent::CallButton{ floor, call } => {
+                if CallType::Cab == call { 
+                    self.cab_called[floor as usize] = true; //OBS: 0-indexed?????????????????????????????
+                }    
+            }
+            _=> { } 
+        }
+    } 
 
-    handle_newfloor_disconnected(&mut self, new_state: CabinState){ // TODO
-        go_to_floor = first true in cab_called (vec<bool>);
-        self.elevator_hw.go_to_floor(go_to_floor);
-
-        match CabinState {
-            DoorOpen => error,
-            Between => error
-            DoorClose { current_floor } => //idle
-            { 
-                loop_index = 0;
-                loop {
-                    if cab_called[loop_index] == true {
-                        self.elevator_hw.go_to_floor(loop_index);
+    fn handle_newfloor_disconnected(&mut self, new_state: CabinState){ 
+        match new_state {
+            CabinState::DoorOpen { .. } => panic!("Error: Door is open"),
+            CabinState::Between { .. } => panic!("Error: Between floors"),
+            CabinState::DoorClose { current_floor } => {
+                for (index, &called) in self.cab_called.iter().enumerate() {
+                    if called {
+                        self.elevator_hw.go_to_floor(index as u8); //OBS: 0-indexed?????????????????????????????
                         break;
                     }
-                    loop_index += 1;
-                }    
+                }  
             }
         }   
     }
