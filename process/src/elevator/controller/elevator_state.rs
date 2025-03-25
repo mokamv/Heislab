@@ -116,25 +116,6 @@ impl ElevatorState {
         None
     }
 
-    pub fn complete_request_at_floor(&mut self, reached_floor: u8) -> Vec<LightControl> {
-        // Door should only open when there is a request associated
-        if let Some(current_service) = self.queue.front_mut() {
-            if current_service.is_final_floor(reached_floor) {
-                let current_service = self.queue.pop_front().unwrap();
-                let serviced_calls = current_service.last_floor_serviced();
-                LightControl::vec_turn_off_for_from(self.identifier, serviced_calls)
-            }
-
-            else {
-                let serviced_calls = current_service.remove_serviced(reached_floor);
-                LightControl::vec_turn_off_for_from(self.identifier, serviced_calls)
-            }
-        }
-        else {
-            panic!("Cannot complete a nonexistent request");
-        }
-    }
-
     // Clear requests for a specific floor
     pub fn complete_request_at_floor(&mut self, reached_floor: u8) -> Vec<LightControl> {
         let floor = reached_floor as usize;
@@ -152,5 +133,5 @@ impl ElevatorState {
         
         lights
     }
-    
+
 }
