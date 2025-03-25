@@ -1,9 +1,8 @@
 use driver_rust::elevio::elev::{CallType, MotorDirection};
 use std::cmp::Ordering;
 
-use crate::data_struct::CabinState::{Between, DoorOpen};
+use crate::data_struct::CabinState::{Between, DoorOpen, Idle, Init};
 use crate::data_struct::CallRequest::{Cab, Hall};
-use CabinState::Idle;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CallRequest {
@@ -101,10 +100,11 @@ impl Default for CabinState {
 }
 
 impl CabinState {
+    // FSM methods
+
     pub fn on_door_timeout(&self) -> Option<CabinState> {
-        // If the door is open, close it
         match self {
-            CabinState::DoorOpen { current_floor } => Some(CabinState::Idle { current_floor: *current_floor }),
+            DoorOpen { current_floor } => Some(CabinState::Idle { current_floor: *current_floor }),
             _ => None,
         }
     }
@@ -112,13 +112,15 @@ impl CabinState {
     pub fn on_floor_arrival(&self, floor: u8, has_pending_requests: bool) -> Option<CabinState> {
         match self {
             // If the cabin is between floors and has pending requests, open the door
-            CabinState::Between { .. } if has_pending_requests => Some(CabinState::DoorOpen { current_floor: floor }),
+            Between { .. } if has_pending_requests => Some(DoorOpen { current_floor: floor }),
             // If the cabin is between floors and has no pending requests, stop at the floor
-            CabinState::Between { .. } => Some(CabinState::Idle { current_floor: floor }),
+            Between { .. } => Some(Idle { current_floor: floor }),
             _ => None,
         }
     }
+}
 
+impl CabinState {
     pub fn is_between(&self) -> bool {
         if let Between { .. } = *self {
             true
@@ -147,35 +149,38 @@ impl CabinState {
         }
     }
 
+    pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
+        match self.get_current_floor_relative_to(to).cmp(&to) {
+            Ordering::Less => MotorDirection::Up,
+            Ordering::Equal => MotorDirection::Stop,
+            Ordering::Greater => MotorDirection::Down
+        }
+    }
+
     pub fn get_current_floor_relative_to(&self, target: u8) -> u8 {
-        match *self {
-            DoorOpen { current_floor }
-            | DoorClose { current_floor } => current_floor,
+        match self {
+            Idle { current_floor }
+            | DoorOpen { current_floor } => *current_floor,
             Between { from_floor, to_floor } => {
-                let from_distance = (target as i32 - from_floor as i32).abs();
-                let to_distance = (target as i32 - to_floor as i32).abs();
+                let from_distance = (target as i32 - *from_floor as i32).abs();
+                let to_distance = (target as i32 - *to_floor as i32).abs();
 
                 match from_distance.cmp(&to_distance) {
-                    Ordering::Less => to_floor,
+                    Ordering::Less => *to_floor,
                     Ordering::Equal => unreachable!(),
-                    Ordering::Greater => from_floor
+                    Ordering::Greater => *from_floor
                 }
             }
+            Init => unreachable!("Function \"get_current_floor_relative_to\" should not be called on Init state")
         }
     }
 
     pub fn get_last_seen_floor(&self) -> u8 {
         match *self {
             DoorOpen { current_floor }
-            | DoorClose { current_floor }
-            | Between { from_floor: current_floor, .. } => current_floor
-        }
-    }
-    pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
-        match self.get_current_floor_relative_to(to).cmp(&to) {
-            Ordering::Less => MotorDirection::Up,
-            Ordering::Equal => MotorDirection::Stop,
-            Ordering::Greater => MotorDirection::Down
+            | Idle { current_floor }
+            | Between { from_floor: current_floor, .. } => current_floor,
+            Init => unreachable!("Function \"get_last_seen_floor\" should not be called on Init state")
         }
     }
 
@@ -189,8 +194,10 @@ impl CabinState {
 
     pub fn get_direction(&self) -> MotorDirection {
         match *self {
-            DoorOpen { .. } | DoorClose { .. } => MotorDirection::Stop,
-            Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor)
+            Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor),
+            Init => unreachable!("Function \"get_direction\" should not be called on Init state"),
+            _ => MotorDirection::Stop,
+
         }
     }
 
@@ -201,7 +208,7 @@ impl CabinState {
                 message[0] = 0;
                 message[1] = current_floor;
             }
-            DoorClose { current_floor } => {
+            Idle { current_floor } => {
                 message[0] = 1;
                 message[1] = current_floor;
             }
@@ -209,6 +216,9 @@ impl CabinState {
                 message[0] = 2;
                 message[1] = from_floor;
                 message[2] = to_floor;
+            }
+            Init => {
+                message[0] = 3;
             }
         };
         message
@@ -218,8 +228,9 @@ impl CabinState {
         assert_eq!(raw_cabin_state.len(), 3);
         match raw_cabin_state[0] {
             0 => DoorOpen { current_floor: raw_cabin_state[1] },
-            1 => DoorClose { current_floor: raw_cabin_state[1] },
+            1 => Idle { current_floor: raw_cabin_state[1] },
             2 => Between { from_floor: raw_cabin_state[1], to_floor: raw_cabin_state[2] },
+            3 => Init,
             _ => unreachable!()
         }
     }

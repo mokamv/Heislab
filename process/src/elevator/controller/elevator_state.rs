@@ -4,13 +4,16 @@ use common::connection::connection_handle::handle::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
 use std::collections::VecDeque;
+use std::vec;
 use driver_rust::elevio::elev::MotorDirection;
+
+const N_FLOOR: usize = 4; //TODO: Move to config file
 
 pub struct ElevatorState {
     identifier: ConnectionIdentifier,
     is_connected: bool,
     state: CabinState,
-    queue: VecDeque<ElevatorService>,
+    request_matrix: Vec<[bool; 3], N_FLOOR>, // [ hall up | hall down | cab ]
 }
 
 impl ElevatorState {
@@ -19,8 +22,12 @@ impl ElevatorState {
             identifier,
             is_connected: false,
             state: Default::default(),
-            queue: Default::default(),
+            request_matrix: vec![[false; 3]; N_FLOOR]
         }
+    }
+
+    pub fn get_total_floors(&self) -> usize {
+        self.request_matrix.len()
     }
 
     pub(super) fn identifier(&self) -> ConnectionIdentifier {
@@ -43,8 +50,8 @@ impl ElevatorState {
         &self.state
     }
 
-    pub fn get_queue(&self) -> &VecDeque<ElevatorService> {
-        &self.queue
+    pub fn get_request_matrix(&self) -> &Vec<[bool; 3]> {
+        &self.request_matrix
     }
 
     pub fn is_connected(&self) -> bool {
@@ -55,41 +62,58 @@ impl ElevatorState {
         ! self.state.is_door_open()
     }
 
-    pub(super) fn add_new_request(&mut self, request: CallRequest) {
-        // On empty queue (idling elevator)
-        if self.queue.is_empty() {
-            debug_assert!(self.state.is_idle(), "An empty queue must coincide with idling");
-            self.queue.push_front(ElevatorService::from(request, self.state.get_last_seen_floor()));
-        } else {
-            for service in self.queue.iter_mut() {
-                // Drops already serviced request
-                if service.is_already_in(&request) {
-                    return;
+    pub fn add_request(&mut self, request: CallRequest) { // TODO: Error if request is not valid
+        match request {
+            CallRequest::Hall { floor, direction } => {
+                match direction {
+                    MotorDirection::Up => self.request_matrix[floor as usize][0] = true,
+                    MotorDirection::Down => self.request_matrix[floor as usize][1] = true,
+                    MotorDirection::Stop => {}
                 }
-                // If possible, upgrade the request to go further on the planned direction.
-                else if service.is_upgradeable_with(&request) {
-                    service.upgrade_to(request);
-                    return;
-                }
-                // Finally check if the request can even fit inside this service
-                else if service.can_add(&request, &self.state) {
-                    service.add(request);
-                    return;
-                }
-            };
-
-            self.queue.push_back(ElevatorService::from(request, self.state.get_last_seen_floor()));
+            }
+            CallRequest::Cab { floor } => {
+                self.request_matrix[floor as usize][2] = true;
+            }
         }
     }
 
+    // Clear hall requests (keep cab requests)
     pub fn clear_hall_requests(&mut self) {
-        self.queue.retain(|service| ! service.is_cab_only());
+        for floor_requests in self.request_matrix.iter_mut() {
+            floor_requests[0] = false; // Clear hall up
+            floor_requests[1] = false; // Clear hall down
+        }
     }
 
+    // Get hall requests in the format needed for the hall request assigner
+    pub fn get_hall_requests(&self) -> Vec<Vec<bool>> {
+        self.request_matrix
+            .iter()
+            .map(|floor| vec![floor[0], floor[1]]) // Convert [hall_up, hall_down, cab] to [hall_up, hall_down]
+            .collect()
+    }
+
+    // Get cab requests in the format needed for the hall request assigner
+    pub fn get_cab_requests(&self) -> Vec<bool> {
+        self.request_matrix
+            .iter()
+            .map(|floor| floor[2]) // Get only cab requests
+            .collect()
+    }
+
+    pub fn update_request_matrix(&mut self, request_matrix: Vec<[bool; 3]>) {
+        self.request_matrix = request_matrix;
+    }
+
+    //  TODO: Check if correct
+    // Get next floor to visit based on current requests
     pub fn get_next_command(&self) -> Option<Message> {
-        let current_service = self.queue.front()?;
-        let next_floor = current_service.get_next_serviceable_floor();
-        Some(Message::GotoFloor { go_to_floor: next_floor })
+        for (floor, requests) in self.request_matrix.iter().enumerate() {
+            if requests.iter().any(|&r| r) { // If there is any request for this floor
+                return Some(Message::GotoFloor { go_to_floor: floor as u8 });
+            }
+        }
+        None
     }
 
     pub fn complete_request_at_floor(&mut self, reached_floor: u8) -> Vec<LightControl> {
@@ -111,39 +135,22 @@ impl ElevatorState {
         }
     }
 
-    pub fn get_total_floors(&self) -> usize { // FIX, do not hardcode
-        4
+    // Clear requests for a specific floor
+    pub fn complete_request_at_floor(&mut self, reached_floor: u8) -> Vec<LightControl> {
+        let floor = reached_floor as usize;
+        let current_requests = self.request_matrix[floor];
+        
+        // Get the light controls before clearing the requests
+        let lights = LightControl::vec_turn_off_for_from(
+            self.identifier,
+            reached_floor,
+            &current_requests
+        );
+
+        // Clear all requests for this floor
+        self.request_matrix[floor] = [false; 3];
+        
+        lights
     }
-
-    // The following functions are used for cost function algorithm in elevator_pool.rs.
-    // The cost function algorithm is used to assign hall requests to elevators.
-
-    pub fn get_hall_requests_cost_input(&self) -> Vec<Vec<bool>> {
-        let total_floors = self.get_total_floors();
-        let mut hall_requests = vec![vec![false, false]; total_floors];
-
-        for request in &self.queue {
-            if let CallRequest::Hall { floor, direction } = request {
-                match direction {
-                    MotorDirection::Up => hall_requests[*floor as usize][0] = true,
-                    MotorDirection::Down => hall_requests[*floor as usize][1] = true,
-                    MotorDirection::Stop => {}
-                }
-            }
-        }
-        hall_requests
-    }
-
-    pub fn get_cab_requests_cost_input(&self) -> Vec<bool> {
-        let total_floors = self.get_total_floors();
-        let mut cab_requests = vec![false; total_floors];
-
-        for request in &self.queue {
-            if let CallRequest::Cab { floor } = request {
-                cab_requests[*floor as usize] = true;
-            }
-        }
-
-        cab_requests
-    }
+    
 }

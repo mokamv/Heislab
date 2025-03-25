@@ -10,13 +10,29 @@ pub struct LightControl {
 
 impl LightControl {
 
-    pub(super) fn vec_turn_off_for_from(identifier: ConnectionIdentifier, requests: Vec<CallRequest>) -> Vec<LightControl> {
-        requests.iter()
-            .map(|request| match request {
-                CallRequest::Hall { .. } => LightControl::turn_off_for_all(*request),
-                CallRequest::Cab { .. } => LightControl::turn_off_for(identifier, *request)
-            })
-            .collect()
+    pub(super) fn vec_turn_off_for_from(identifier: ConnectionIdentifier, floor: u8, matrix: &[bool; 3]) -> Vec<LightControl> {
+        let mut lights = Vec::new();
+        
+        // Check for each possible type of request at floor and turn off lights accordingly
+        if matrix[0] {  // hall up
+            lights.push(LightControl::turn_off_for_all(CallRequest::Hall {
+                floor,
+                direction: MotorDirection::Up
+            }));
+        }
+        if matrix[1] {  // hall down
+            lights.push(LightControl::turn_off_for_all(CallRequest::Hall {
+                floor,
+                direction: MotorDirection::Down
+            }));
+        }
+        if matrix[2] {  // cab
+            lights.push(LightControl::turn_off_for(identifier, CallRequest::Cab {
+                floor
+            }));
+        }
+        
+        lights
     }
 
     pub(super) fn turn_on_for_from(identifier: ConnectionIdentifier, request: CallRequest) -> LightControl {
