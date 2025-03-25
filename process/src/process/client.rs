@@ -4,7 +4,7 @@ use common::connection::connection_handle::message_sender::MessageSender;
 use common::data_struct::CabinState;
 use common::messages::Message;
 use crossbeam_channel::{after, select};
-use driver_rust::elevio::elev::ElevatorEvent;
+use driver_rust::elevio::elev::{ElevatorEvent,MotorDirection};
 use std::time::Duration;
 
 const FLOOR_COUNT: u8 = 4;
@@ -33,7 +33,7 @@ impl Process {
                 recv(try_init_after) -> _ => {
                     let init_result = client_state.elevator_hw.init_if_is_not_yet();
                     if let Err(e) = init_result {
-                        eprintln!("Error initializing elevator hardware: {:?}", e);
+                        eprintln!("Error initializing elevator hardware: {:?}", e); //calling the logger instead???????????????
                     }
                 },
                 recv(message_receiver) -> message => {
@@ -65,7 +65,7 @@ struct ClientState {
     elevator_hw: ElevatorHardware,
     message_sender: MessageSender,
     last_state: CabinState,
-    cab_called: Vec<bool>,
+    mut cab_called: Vec<bool>,
 }
 
 
@@ -107,21 +107,23 @@ impl ClientState {
     }
 
     fn handle_elevator_event(&mut self, elevator_event: ElevatorEvent) {
-        let new_state = self.elevator_hw.handle_event(elevator_event);
+        let new_state = self.elevator_hw.handle_event(elevator_event); 
         self.send_updated_state(new_state);
+        
+        self.update_cab_called_vec(); //TODO
 
         if self.is_auth {
-            self.message_sender.send(elevator_event);
+            self.message_sender.send(elevator_event); 
         } 
     }
 
     fn handle_close_door_event(&mut self) {
         let new_state = self.elevator_hw.handle_close_door();
-        self.update_cab_called_vec();
+        
         if is_auth{
             self.send_updated_state(new_state);
         } else{
-            self.next_call_disconnected(new_state); 
+            self.handle_newfloor_disconnected(new_state); //is this the only place wee neet to call when diconeccted????????????
         }
         
     }
@@ -134,14 +136,35 @@ impl ClientState {
             }
         }
     }
-    fn update_cab_called_vec(event){//TODO
-        if event == ElevatorEvent::CallButton && event.CallType == Cab { //Cab = 2 in CallType enum
-            cab_called[event.floor] = true; //floor takes values from ????????????????????? https://github.com/LeVraiPiroZz/driver-rust
-        }
+}
+
+
+impl ClientState{
+    fn update_cab_called_vec(&mut self, event){//TODO
         
+        if event == ElevatorEvent::CallButton && event.CallType == Cab { //Cab = 2 in CallType enum
+            cab_called[event.floor as usize] = true; //floor takes values from ????????????????????? https://github.com/LeVraiPiroZz/driver-rust
+        }    
     }
-    handle_newcall_disconnected(new_state){ // TODO
+
+    handle_newfloor_disconnected(&mut self, new_state: CabinState){ // TODO
         go_to_floor = first true in cab_called (vec<bool>);
         self.elevator_hw.go_to_floor(go_to_floor);
+
+        match CabinState {
+            DoorOpen => error,
+            Between => error
+            DoorClose { current_floor } => //idle
+            { 
+                loop_index = 0;
+                loop {
+                    if cab_called[loop_index] == true {
+                        self.elevator_hw.go_to_floor(loop_index);
+                        break;
+                    }
+                    loop_index += 1;
+                }    
+            }
+        }   
     }
 }
