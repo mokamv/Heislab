@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 use crate::data_struct::CabinState::{Between, DoorOpen};
 use crate::data_struct::CallRequest::{Cab, Hall};
-use CabinState::DoorClose;
+use CabinState::Idle;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CallRequest {
@@ -80,7 +80,7 @@ impl CallRequest {
             Hall { direction, .. } => match direction {
                 MotorDirection::Up => CallType::HallUp as u8,
                 MotorDirection::Down => CallType::HallDown as u8,
-                _ => unreachable!("Shouldn't happens")
+                _ => unreachable!("Shouldn't happen")
             }
         }
     }
@@ -88,45 +88,34 @@ impl CallRequest {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CabinState {
+    Idle { current_floor: u8 },
+    Between { from_floor: u8, to_floor: u8 }, // Moving between to floors
     DoorOpen { current_floor: u8 },
-    DoorClose { current_floor: u8 }, // This is the idle at floor
-    Between { from_floor: u8, to_floor: u8 }
+    Init
 }
 
 impl Default for CabinState {
     fn default() -> Self {
-        Between { from_floor: u8::MAX, to_floor: 0 }
+        CabinState::Init
     }
 }
 
 impl CabinState {
-    pub(crate) fn encode(&self) -> [u8; 3] {
-        let mut message = [0u8; 3];
-        match *self {
-            DoorOpen { current_floor } => {
-                message[0] = 0;
-                message[1] = current_floor;
-            }
-            DoorClose { current_floor } => {
-                message[0] = 1;
-                message[1] = current_floor;
-            }
-            Between { from_floor, to_floor } => {
-                message[0] = 2;
-                message[1] = from_floor;
-                message[2] = to_floor;
-            }
-        };
-        message
+    pub fn on_door_timeout(&self) -> Option<CabinState> {
+        // If the door is open, close it
+        match self {
+            CabinState::DoorOpen { current_floor } => Some(CabinState::Idle { current_floor: *current_floor }),
+            _ => None,
+        }
     }
 
-    pub(super) fn decode(raw_cabin_state: &[u8]) -> Self {
-        assert_eq!(raw_cabin_state.len(), 3);
-        match raw_cabin_state[0] {
-            0 => DoorOpen { current_floor: raw_cabin_state[1] },
-            1 => DoorClose { current_floor: raw_cabin_state[1] },
-            2 => Between { from_floor: raw_cabin_state[1], to_floor: raw_cabin_state[2] },
-            _ => unreachable!()
+    pub fn on_floor_arrival(&self, floor: u8, has_pending_requests: bool) -> Option<CabinState> {
+        match self {
+            // If the cabin is between floors and has pending requests, open the door
+            CabinState::Between { .. } if has_pending_requests => Some(CabinState::DoorOpen { current_floor: floor }),
+            // If the cabin is between floors and has no pending requests, stop at the floor
+            CabinState::Between { .. } => Some(CabinState::Idle { current_floor: floor }),
+            _ => None,
         }
     }
 
@@ -143,7 +132,7 @@ impl CabinState {
     }
 
     pub fn is_idle(&self) -> bool {
-        if let DoorClose { .. } = *self {
+        if let Idle { .. } = *self {
             true
         } else { false }
     }
@@ -204,4 +193,35 @@ impl CabinState {
             Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor)
         }
     }
+
+    pub(crate) fn encode(&self) -> [u8; 3] {
+        let mut message = [0u8; 3];
+        match *self {
+            DoorOpen { current_floor } => {
+                message[0] = 0;
+                message[1] = current_floor;
+            }
+            DoorClose { current_floor } => {
+                message[0] = 1;
+                message[1] = current_floor;
+            }
+            Between { from_floor, to_floor } => {
+                message[0] = 2;
+                message[1] = from_floor;
+                message[2] = to_floor;
+            }
+        };
+        message
+    }
+
+    pub(super) fn decode(raw_cabin_state: &[u8]) -> Self {
+        assert_eq!(raw_cabin_state.len(), 3);
+        match raw_cabin_state[0] {
+            0 => DoorOpen { current_floor: raw_cabin_state[1] },
+            1 => DoorClose { current_floor: raw_cabin_state[1] },
+            2 => Between { from_floor: raw_cabin_state[1], to_floor: raw_cabin_state[2] },
+            _ => unreachable!()
+        }
+    }
+
 }

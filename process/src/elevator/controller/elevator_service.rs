@@ -105,6 +105,10 @@ impl ElevatorService {
         }
     }
 
+    pub fn is_cab_only(&self) -> bool {
+        self.serviceable_requests.iter().all(|request| matches!(request, CallRequest::Cab { .. }))
+    }
+
     pub(super) fn add(&mut self, request: CallRequest) {
         self.serviceable_requests.push(request);
     }
