@@ -5,13 +5,13 @@ use std::time::Duration;
 use crossbeam_channel::Receiver;
 use driver_rust::elevio::elev::FloorEvent::{AtFloor, BetweenFloors};
 
-pub struct HardwareState {
+pub struct MinimalState {
     cabin: CabinState,
     target: Option<u8>,
 }
 
 pub struct ElevatorHardwareState {
-    state: HardwareState,
+    state: MinimalState,
     elevator: Elevator,
     door_control: DoorControl,
 }
@@ -25,7 +25,7 @@ impl ElevatorHardwareState {
 
         Self {
             door_control,
-            state: HardwareState {
+            state: MinimalState {
                 target: None,
                 cabin: Default::default(),
             },
@@ -45,9 +45,9 @@ impl ElevatorHardwareState {
 impl ElevatorHardwareState {
     pub fn set_new_target(&mut self, target: u8) -> CabinState {
         match self.state.cabin {
-            CabinState::OpenedDoor { .. } => unreachable!("Go to floor cannot be called while doors are opened"),
+            CabinState::DoorOpen { .. } => unreachable!("Go to floor cannot be called while doors are opened"),
             CabinState::Idle { .. }
-            | CabinState::BetweenFloors { .. } => {
+            | CabinState::Between { .. } => {
                 self.state.target = Some(target);
 
                 let from_floor = self.state.cabin.get_current_floor_relative_to(target);
@@ -59,10 +59,17 @@ impl ElevatorHardwareState {
                     MotorDirection::Up => from_floor + 1
                 };
 
-                self.state.cabin = CabinState::BetweenFloors { from_floor, to_floor };
+                self.state.cabin = CabinState::Between { from_floor, to_floor };
                 self.elevator.motor_direction(direction);
                 self.state.cabin
             }
+            CabinState::Init => unreachable!("Function go_to_floor cannot be called while elevator is initializing") //TODO
+        }
+    }
+
+    pub fn init_if_is_not_yet(&mut self) { // TODO: ASK IF CORRECT
+        if self.state.cabin == CabinState::Init {
+            self.elevator.motor_direction(MotorDirection::Down);
         }
     }
 
@@ -81,7 +88,7 @@ impl ElevatorHardwareState {
         self.elevator.motor_direction(MotorDirection::Stop);
         self.elevator.door_light(true);
         self.door_control.open_door();
-        self.state.cabin = CabinState::OpenedDoor { current_floor: self.state.target.unwrap() };
+        self.state.cabin = CabinState::DoorOpen { current_floor: self.state.target.unwrap() };
         self.state.target = None;
         self.state.cabin
     }
@@ -119,8 +126,8 @@ impl ElevatorHardwareState {
     fn handle_floor_sensor_event(&mut self, floor: FloorEvent) -> CabinState {
         match floor {
             BetweenFloors() => {
-                // No target + in between floor -> Repositioning
-                if self.state.target == None {
+                // Check for initialization state
+                if self.state.cabin == CabinState::Init {
                     self.elevator.motor_direction(MotorDirection::Down);
                 }
                 self.state.cabin

@@ -10,8 +10,7 @@ pub mod elevator {
         pub mod controller_process;
         pub mod controller_sync;
         pub mod light_control;
-        pub mod elevator_state;
-        pub mod elevator_service;
+        pub mod elevator_fsm;
         pub mod elevator_pool;
     }
 }
