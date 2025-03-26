@@ -142,10 +142,11 @@ impl ClientState{
         }
     } 
 
+    //TODO: make it go to a closer floor
     fn handle_newfloor_disconnected(&mut self, new_state: CabinState){ 
         match new_state {
-            CabinState::DoorOpen { .. } => panic!("Error: Door is open"),
-            CabinState::Between { .. } => panic!("Error: Between floors"),
+            CabinState::DoorOpen { .. } => panic!("Error: Door is open, when reseeving door close event"),
+            CabinState::Between { .. } => panic!("Error: Between floors, when reseeving door close event"),
             CabinState::Init => panic!("Error: Init state"),
             CabinState::Idle { current_floor } => {
                 for (index, &called) in self.cab_called.iter().enumerate() {
