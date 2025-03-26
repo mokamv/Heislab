@@ -87,70 +87,49 @@ impl CallRequest {
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CabinState {
+    Init,
     Idle { current_floor: u8 },
     Between { from_floor: u8, to_floor: u8 }, // Moving between to floors
     DoorOpen { current_floor: u8 },
-    Init
 }
 
-impl Default for CabinState {
+impl Default for CabinState { // is this used?
     fn default() -> Self {
         CabinState::Init
     }
 }
 
 impl CabinState {
-    // FSM methods
-
-    pub fn on_door_timeout(&self) -> Option<CabinState> {
-        match self {
-            DoorOpen { current_floor } => Some(CabinState::Idle { current_floor: *current_floor }),
-            _ => None,
-        }
-    }
-
-    pub fn on_floor_arrival(&self, floor: u8, has_pending_requests: bool) -> Option<CabinState> {
-        match self {
-            // If the cabin is between floors and has pending requests, open the door
-            Between { .. } if has_pending_requests => Some(DoorOpen { current_floor: floor }),
-            // If the cabin is between floors and has no pending requests, stop at the floor
-            Between { .. } => Some(Idle { current_floor: floor }),
-            _ => None,
-        }
-    }
-}
-
-impl CabinState {
     pub fn is_between(&self) -> bool {
-        if let Between { .. } = *self {
+        if let CabinState::Between { .. } = *self {
             true
         } else { false }
     }
 
     pub fn is_door_open(&self) -> bool {
-        if let DoorOpen { .. } = *self {
+        if let CabinState::DoorOpen { .. } = *self {
             true
         } else { false }
     }
 
     pub fn is_idle(&self) -> bool {
-        if let Idle { .. } = *self {
+        if let CabinState::Idle { .. } = *self {
             true
         } else { false }
     }
 
     pub fn is_init(&self) -> bool {
-        if let Init = *self {
+        if let CabinState::Init = *self {
             true
         } else { false }
     }
 
     pub fn increment_between(&mut self) {
-        let Between { from_floor, to_floor } = *self else { unreachable!() };
+        let CabinState::Between { from_floor, to_floor } = *self else { unreachable!() };
 
         *self = match Self::get_direction_from_to(from_floor, to_floor) {
-            MotorDirection::Down => Between { from_floor: to_floor, to_floor: to_floor - 1 },
-            MotorDirection::Up => Between { from_floor: to_floor, to_floor: to_floor + 1 },
+            MotorDirection::Down => CabinState::Between { from_floor: to_floor, to_floor: to_floor - 1 },
+            MotorDirection::Up => CabinState::Between { from_floor: to_floor, to_floor: to_floor + 1 },
             MotorDirection::Stop => unreachable!()
         }
     }
@@ -165,9 +144,9 @@ impl CabinState {
 
     pub fn get_current_floor_relative_to(&self, target: u8) -> u8 {
         match self {
-            Idle { current_floor }
-            | DoorOpen { current_floor } => *current_floor,
-            Between { from_floor, to_floor } => {
+            CabinState::Idle { current_floor }
+            | CabinState::DoorOpen { current_floor } => *current_floor,
+            CabinState::Between { from_floor, to_floor } => {
                 let from_distance = (target as i32 - *from_floor as i32).abs();
                 let to_distance = (target as i32 - *to_floor as i32).abs();
 
@@ -177,16 +156,16 @@ impl CabinState {
                     Ordering::Greater => *from_floor
                 }
             }
-            Init => unreachable!("Function \"get_current_floor_relative_to\" should not be called on Init state")
+            CabinState::Init => unreachable!("Function \"get_current_floor_relative_to\" should not be called on Init state")
         }
     }
 
     pub fn get_last_seen_floor(&self) -> u8 {
         match *self {
-            DoorOpen { current_floor }
-            | Idle { current_floor }
-            | Between { from_floor: current_floor, .. } => current_floor,
-            Init => unreachable!("Function \"get_last_seen_floor\" should not be called on Init state")
+            CabinState::DoorOpen { current_floor }
+            | CabinState::Idle { current_floor }
+            | CabinState::Between { from_floor: current_floor, .. } => current_floor,
+            CabinState::Init => unreachable!("Function \"get_last_seen_floor\" should not be called on Init state")
         }
     }
 
@@ -200,8 +179,8 @@ impl CabinState {
 
     pub fn get_direction(&self) -> MotorDirection {
         match *self {
-            Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor),
-            Init => unreachable!("Function \"get_direction\" should not be called on Init state"),
+            CabinState::Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor),
+            CabinState::Init => MotorDirection::Down,
             _ => MotorDirection::Stop,
 
         }

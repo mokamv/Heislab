@@ -1,4 +1,3 @@
-use crate::elevator::controller::elevator_service::ElevatorService;
 use crate::elevator::controller::light_control::LightControl;
 use common::connection::connection_handle::handle::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
@@ -13,15 +12,45 @@ pub struct ElevatorState {
     identifier: ConnectionIdentifier,
     is_connected: bool,
     state: CabinState,
-    request_matrix: Vec<[bool; 3], N_FLOOR>, // [ hall up | hall down | cab ]
+    request_matrix: Vec<[bool; 3]>, // [ hall up | hall down | cab ]
 }
 
 impl ElevatorState {
-    pub(super) fn from(identifier: ConnectionIdentifier) -> Self {
+    // FSM methods
+    pub fn on_init_floor_arrival(&self, floor: u8) -> Self {
+        match self.state {
+            CabinState::Init => CabinState::Idle { current_floor: floor },
+            _ => *self.state
+        }
+    }
+
+    pub fn on_floor_arrival(&self, floor: u8, has_requests: bool) -> Self {
+        match self.state {
+            CabinState::Between { to_floor, .. } if *to_floor == floor && has_requests => {
+                CabinState::DoorOpen { current_floor: floor }
+            }
+            CabinState::Between { .. } => {
+                CabinState::Idle { current_floor: floor }
+            }
+            _ => *self.state
+        }
+        self.get_next_command();
+    }
+
+    pub fn on_door_timeout(&self) -> Self {
+        match self.state {
+            CabinState::DoorOpen { current_floor } => CabinState::Idle { current_floor: *current_floor },
+            _ => *self.state
+        }
+    }
+}
+
+impl ElevatorState {
+    pub(super) fn from(identifier: ConnectionIdentifier) -> Self { // Is this used?
         Self {
             identifier,
             is_connected: false,
-            state: Default::default(),
+            state: CabinState::default(),
             request_matrix: vec![[false; 3]; N_FLOOR]
         }
     }
@@ -77,7 +106,7 @@ impl ElevatorState {
         }
     }
 
-    // Clear hall requests (keep cab requests)
+    // Clear hall requests
     pub fn clear_hall_requests(&mut self) {
         for floor_requests in self.request_matrix.iter_mut() {
             floor_requests[0] = false; // Clear hall up
@@ -108,12 +137,58 @@ impl ElevatorState {
     //  TODO: Check if correct
     // Get next floor to visit based on current requests
     pub fn get_next_command(&self) -> Option<Message> {
-        for (floor, requests) in self.request_matrix.iter().enumerate() {
-            if requests.iter().any(|&r| r) { // If there is any request for this floor
-                return Some(Message::GotoFloor { go_to_floor: floor as u8 });
+        let current_floor = self.state.get_current_floor();
+
+        // Check if there are any requests in the current floor
+        if self.request_matrix[current_floor as usize].iter().any(|&request| request) {
+            return Some(Message::GotoFloor { go_to_floor: current_floor });
+        }
+
+        match self.state.get_direction() {
+            MotorDirection::Stop => {
+                // Calculate the closest floor with requests
+                let mut closest_floor = None;
+                let mut min_distance = usize::MAX;
+    
+                for (floor, requests) in self.request_matrix.iter().enumerate() {
+                    if requests.iter().any(|&request| request) {
+                        let distance = (floor as i32 - current_floor as i32).abs() as usize;
+                        if distance < min_distance {
+                            min_distance = distance;
+                            closest_floor = Some(floor);
+                        }
+                    }
+                }
+                closest_floor.map(|floor| Message::GotoFloor { go_to_floor: floor as u8 })
+            }
+            direction => {
+                let range_same_dir = if direction == MotorDirection::Up {
+                    current_floor + 1..self.get_total_floors()
+                } else {
+                    0..current_floor
+                };
+    
+                // First check for requests in current direction
+                for floor in range_same_dir {
+                    if self.request_matrix[floor].iter().any(|&request| request) {
+                        return Some(Message::GotoFloor { go_to_floor: floor as u8 });
+                    }
+                }
+                // If no requests in current direction, check opposite direction
+            let range_opposite = if direction == MotorDirection::Up {
+                (0..current_floor).rev()
+            } else {
+                current_floor + 1..self.get_total_floors()
+            };
+
+            for floor in range_opposite {
+                if self.request_matrix[floor].iter().any(|&request| request) {
+                    return Some(Message::GotoFloor { go_to_floor: floor as u8 });
+                }
+            }
+            None
             }
         }
-        None
     }
 
     // Clear requests for a specific floor
@@ -121,7 +196,7 @@ impl ElevatorState {
         let floor = reached_floor as usize;
         let current_requests = self.request_matrix[floor];
         
-        // Get the light controls before clearing the requests
+        // Handle lights
         let lights = LightControl::vec_turn_off_for_from(
             self.identifier,
             reached_floor,
@@ -133,5 +208,4 @@ impl ElevatorState {
         
         lights
     }
-
 }

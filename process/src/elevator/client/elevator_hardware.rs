@@ -71,10 +71,9 @@ impl ElevatorHardware {
         }
     }
 
-    pub fn init_if_is_not_yet(&mut self) {
-        if self.state.target == None
-            && self.state.cabin == Default::default() {
-            self.elevator.motor_direction(MotorDirection::Down)
+    pub fn init_if_is_not_yet(&mut self) { // TODO: ASK IF CORRECT
+        if self.state.cabin == CabinState::Init {
+            self.elevator.motor_direction(MotorDirection::Down);
         }
     }
 
@@ -126,11 +125,21 @@ impl ElevatorHardware {
 
     fn handle_floor_sensor(&mut self, floor: u8) -> CabinState {
         self.elevator.floor_indicator(floor);
-        match self.state.target {
-            None => self.reach_idle(floor),
-            Some(target_floor) => {
-                if target_floor == floor { self.reach_target() }
-                else { self.reach_non_target_floor() }
+        match self.state.cabin {
+            CabinState::Init => {
+                // When floor reached during initialization stop and go to Idle
+                self.elevator.motor_direction(MotorDirection::Stop);
+                self.state.cabin = CabinState::Idle { current_floor: floor };
+                self.state.cabin
+            }
+            _ => {
+                match self.state.target {
+                    None => self.reach_idle(floor),
+                    Some(target_floor) => {
+                        if target_floor == floor { self.reach_target() }
+                        else { self.reach_non_target_floor() }
+                    }
+                }
             }
         }
     }

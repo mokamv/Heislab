@@ -1,6 +1,7 @@
+use std::array;
 use std::process::Command;
 
-use crate::elevator::controller::elevator_state::ElevatorState;
+use crate::elevator::controller::elevator_fsm::ElevatorState;
 use common::connection::client_pool::client_pool::{ClientPool, Target};
 use common::connection::connection_handle::handle::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
@@ -88,7 +89,7 @@ impl ElevatorPool {
                             light_control.send(&mut self.client_pool)
                         }
                     }
-                    CabinState::DoorClose { .. } => {
+                    CabinState::Idle { .. } => {
                         let next_command = elevator.get_next_command();
                         if let Some(next_command) = next_command {
                             self.client_pool.send(
@@ -98,6 +99,7 @@ impl ElevatorPool {
                         }
                     }
                     CabinState::Between { .. } => {}
+                    CabinState::Init => {}
                 }
             }
 
@@ -116,7 +118,9 @@ impl ElevatorPool {
     }
 
     pub fn execute_hall_request_assigner(&self) -> Result<(), String> {
-        let hall_requests: Vec<Vec<bool>> = self.pool.iter()
+        let hall_requests: Vec<[bool; 3]> = self.pool.iter()
+            .filter(|elevator| elevator.is_connected())
+            .filter(|elevator| !elevator.get_state().is_init())
             .map(|elevator| elevator.get_hall_requests())
             .collect();
 
@@ -129,7 +133,7 @@ impl ElevatorPool {
                     CabinState::Idle { .. } => "idle",
                     CabinState::Between { .. } => "moving",
                     CabinState::DoorOpen { .. } => "doorOpen",
-                    CabinState::Init => "init"
+                    _ => unreachable!(),
                 };
 
                 let floor = state.get_last_seen_floor();
@@ -170,14 +174,14 @@ impl ElevatorPool {
         }
     
         let output_str = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-        let hall_requests_assignments: HashMap<String, Vec<Vec<bool>>> = serde_json::from_str(&output_str).map_err(|e| e.to_string())?;
+        let hall_requests_assignments: HashMap<String, Vec<[bool; 3]>> = serde_json::from_str(&output_str).map_err(|e| e.to_string())?;
 
         self.assign_updated_elevator_states(hall_requests_assignments);
 
         Ok(())
     }
 
-    fn assign_updated_elevator_states(&mut self, hall_requests_assignments: HashMap<String, Vec<Vec<bool>>>) {
+    fn assign_updated_elevator_states(&mut self, hall_requests_assignments: HashMap<String, Vec<[bool; 3]>>) {
         for (elevator_id, hall_requests) in hall_requests_assignments {
             let elevator_id = ConnectionIdentifier::from(elevator_id);
             let elevator = self.get_elevator(elevator_id);
