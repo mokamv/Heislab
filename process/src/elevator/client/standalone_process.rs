@@ -1,4 +1,4 @@
-use crate::config::{HW_POLL_PERIOD, N_FLOOR};
+use crate::config::{HW_ADDRESS, HW_POLL_PERIOD, N_FLOOR};
 use crate::elevator::client::elevator_hardware::ElevatorHardwareState;
 use common::connection::event_handle::standalone_handle::standalone_handle::StandaloneHandle;
 use common::data_struct::CabinState;
@@ -21,7 +21,7 @@ pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandl
         is_connected_to_controller: false,
         handle: standalone_handle.unwrap(),
         elevator: ElevatorHardwareState::new(
-            "127.0.0.1:15657",
+            HW_ADDRESS,
             N_FLOOR,
             HW_POLL_PERIOD
         ),

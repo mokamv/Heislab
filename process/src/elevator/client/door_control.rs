@@ -39,6 +39,7 @@ impl DoorControl {
                         if begin.elapsed() > STAYS_OPEN_FOR {
                             break 'timer
                         }
+                        sleep(poll_period);
                     }
 
                     close_door_tx.send(()).expect("Unexpected state");
