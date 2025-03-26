@@ -50,7 +50,7 @@ impl ElevatorHardware {
                 debug_assert!(false);
                 unreachable!("Go to floor cannot be called while doors are opened")
             }
-            CabinState::DoorClose { .. }
+            CabinState::Idle { .. }
             | CabinState::Between { .. } => {
                 self.state.target = Some(target);
 
@@ -67,6 +67,7 @@ impl ElevatorHardware {
                 self.elevator.motor_direction(direction);
                 self.state.cabin
             }
+            CabinState::Init => unreachable!("Function go_to_floor cannot be called while elevator is initializing") //TODO
         }
     }
 
@@ -96,7 +97,7 @@ impl ElevatorHardware {
     fn reach_idle(&mut self, floor: u8) -> CabinState {
         self.elevator.motor_direction(MotorDirection::Stop);
         self.state.target = None;
-        self.state.cabin = CabinState::DoorClose { current_floor: floor };
+        self.state.cabin = CabinState::Idle { current_floor: floor };
         self.state.cabin
     }
 
@@ -119,7 +120,7 @@ impl ElevatorHardware {
     pub fn handle_close_door(&mut self) -> CabinState {
         debug_assert!(self.state.cabin.is_door_open());
         self.elevator.door_light(false);
-        self.state.cabin = CabinState::DoorClose { current_floor: self.state.cabin.get_last_seen_floor() };
+        self.state.cabin = CabinState::Idle { current_floor: self.state.cabin.get_last_seen_floor() };
         self.state.cabin
     }
 

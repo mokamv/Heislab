@@ -146,7 +146,8 @@ impl ClientState{
         match new_state {
             CabinState::DoorOpen { .. } => panic!("Error: Door is open"),
             CabinState::Between { .. } => panic!("Error: Between floors"),
-            CabinState::DoorClose { current_floor } => {
+            CabinState::Init => panic!("Error: Init state"),
+            CabinState::Idle { current_floor } => {
                 for (index, &called) in self.cab_called.iter().enumerate() {
                     if called {
                         self.elevator_hw.go_to_floor(index as u8); //OBS: 0-indexed?????????????????????????????

@@ -139,6 +139,12 @@ impl CabinState {
         } else { false }
     }
 
+    pub fn is_init(&self) -> bool {
+        if let Init = *self {
+            true
+        } else { false }
+    }
+
     pub fn increment_between(&mut self) {
         let Between { from_floor, to_floor } = *self else { unreachable!() };
 
