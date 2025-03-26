@@ -85,9 +85,9 @@ impl ControllerHandlePoolChannels {
                 }
             ),
             clients_state: client_ids
-                .iter()
+                .into_iter()
                 .map(|client_id| (
-                    *client_id,
+                    client_id,
                     RefCell::new(
                         Disconnected {
                             since: now,

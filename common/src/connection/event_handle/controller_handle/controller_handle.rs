@@ -69,6 +69,10 @@ impl ControllerHandleBuilder {
                 )
             ),
             handle: ControllerHandle {
+                clients_id: configuration
+                    .client_ids
+                    .into_iter()
+                    .collect(),
                 from_client_pool_to_handle,
                 from_sync_to_handle,
                 to_pool_from_handle,
@@ -115,6 +119,9 @@ impl ControllerHandleConfiguration {
 }
 
 pub struct ControllerHandle {
+    // Store ids of every possible clients
+    clients_id: Vec<ConnectionIdentifier>,
+
     // Receive messages from both the other controller(sync) and the connected clients
     from_client_pool_to_handle: Receiver<ClientMessage>,
     from_sync_to_handle: Receiver<Message>,
@@ -128,6 +135,10 @@ pub struct ControllerHandle {
 }
 
 impl ControllerHandle {
+    pub fn clients_id(&self) -> &[ConnectionIdentifier] {
+        &self.clients_id[..]
+    }
+
     pub fn recv_sync_message(&self) -> &Receiver<Message> {
         &self.from_sync_to_handle
     }

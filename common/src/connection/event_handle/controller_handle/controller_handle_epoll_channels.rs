@@ -34,9 +34,9 @@ impl ControllerHandleEpollChannels {
             sync_state: RefCell::new(Default::default()),
             clients_state: RefCell::new(
                 client_ids
-                    .iter()
+                    .into_iter()
                     .map(|client_id| (
-                        *client_id,
+                        client_id,
                         HandleState::Disconnected {
                             since: now,
                         }

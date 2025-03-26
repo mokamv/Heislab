@@ -63,13 +63,13 @@ pub struct StandaloneHandle {
 }
 
 impl StandaloneHandle {
-    pub fn send_message(&self, message: Message) {
+    pub fn send_message_to_controller(&self, message: Message) {
         self.to_pool_from_handle.send(
             TimedMessage::of(message)
         ).unwrap()
     }
 
-    pub fn recv_message(&self) -> &Receiver<Message> {
+    pub fn recv_controller_message(&self) -> &Receiver<Message> {
         &self.from_pool_to_handle
     }
 }
