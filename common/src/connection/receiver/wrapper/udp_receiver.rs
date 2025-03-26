@@ -34,10 +34,6 @@ impl UdpDataReceiver {
         self.listener.try_clone().unwrap()
     }
 
-    pub(in super::super) fn local_addr(&self) -> SocketAddr {
-        self.listener.local_addr().unwrap()
-    }
-
     pub(in super::super) fn recv_message(&mut self) -> io::Result<(TimedPayload, SocketAddr)> {
         let message = udp_read_one_message(&mut self.listener);
 

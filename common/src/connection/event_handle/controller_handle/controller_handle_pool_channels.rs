@@ -197,21 +197,7 @@ impl ControllerHandlePoolChannels {
             ) => {
                 debug_assert!(since <= disconnected_since);
                 udp_socket.clear_route(sender, destination);
-
-                // //TODO REMOVE ?
-                // // Send every queued messages remaining.
-                // 'emptying_queue: loop {
-                //     match self.from_epoll_to_pool.try_recv() {
-                //         Ok(message) =>
-                //             self.handle_message_from_epoll(
-                //                 message,
-                //                 udp_socket
-                //             ),
-                //         Err(TryRecvError::Empty) => break 'emptying_queue,
-                //         Err(TryRecvError::Disconnected) => { panic!() }
-                //     }
-                // }
-
+                
                 // Informs the handle of the new state
                 self.send_to_handle(destination, Message::Disconnected);
             }
