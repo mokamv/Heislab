@@ -1,25 +1,24 @@
-use std::array;
 use std::process::Command;
 
+use crate::elevator::controller::controller_sync::ControllerSync;
 use crate::elevator::controller::elevator_fsm::ElevatorState;
+use common::connection::event_handle::controller_handle::controller_handle::ControllerHandle;
+use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
-use crate::elevator::controller::light_control::LightControl;
+use driver_rust::elevio::elev::MotorDirection;
+use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
-use driver_rust::elevio::elev::MotorDirection;
-use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use serde_json::json;
-
 
 pub struct ElevatorPool {
     pool: Vec<ElevatorState>
 }
 
 impl ElevatorPool {
-    pub fn from(client_identifiers: Vec<ConnectionIdentifier>) -> Self {
+    pub fn from(client_identifiers: &[ConnectionIdentifier]) -> Self {
         let mut elevators = vec![];
-        client_identifiers.iter().for_each(|elevator_id| {
+        client_identifiers.into_iter().for_each(|elevator_id| {
             elevators.push(ElevatorState::from(*elevator_id))
         });
 
@@ -34,6 +33,8 @@ impl ElevatorPool {
 
     pub fn handle_elevator_message(
         &mut self,
+        controller_sync: &ControllerSync,
+        controller_handle: &ControllerHandle,
         identifier: ConnectionIdentifier,
         message: Message
     ) {
@@ -50,64 +51,56 @@ impl ElevatorPool {
             }
 
             Message::ClientButtonCall { pressed: request } => {
+                // TODO SEND TO CONTROLLER_SYNC FOR SYNC PUPROSE
                 elevator.add_request(request);
-                
-                let can_receive = elevator.can_receive();
-                
-                let new_request = elevator.get_next_command();
 
-                LightControl::turn_on_for_from(identifier, request)
-                    .send(&mut self.client_pool);
-
-                // Update state immediately if possible.
-                if can_receive {
-                    if let Some(new_request) = new_request {
-                        self.client_pool.send(
-                            Target::Specific(identifier),
-                            new_request
-                        ).unwrap()
-                    }
-                }
+                let _ = self
+                    .execute_hall_request_assigner()
+                    .unwrap();
             }
+
+            Message::ClientObstructed { is_obstructed } =>
+                self.handle_obstruction(is_obstructed),
+
+            Message::ClientCabinState { cabin_state } =>
+                self.handle_cabin_state(cabin_state),
 
             // TODO
-            Message::ClientObstructed { .. } => {}
-
-            Message::ClientCabinState { cabin_state } => {
-                elevator.set_state(cabin_state);
-                match cabin_state {
-                    CabinState::DoorOpen { current_floor } => {
-                        let lights = elevator.complete_request_at_floor(current_floor);
-                        for light_control in lights {
-                            light_control.send(&mut self.client_pool)
-                        }
-                    }
-                    CabinState::Idle { .. } => {
-                        let next_command = elevator.get_next_command();
-                        if let Some(next_command) = next_command {
-                            self.client_pool.send(
-                                Target::Specific(identifier),
-                                next_command
-                            ).unwrap()
-                        }
-                    }
-                    CabinState::Between { .. } => {}
-                    CabinState::Init => {}
-                }
-            }
-
-
             Message::ClientStopButton { .. } => println!("Unimplemented"),
-
-
-
-            Message::ControllerAddress { .. } => {}
 
             _ => unreachable!()
         }
     }
 
-    pub fn execute_hall_request_assigner(&self) -> Result<(), String> {
+    fn handle_obstruction(&mut self, is_obstructed: bool) {
+        // TODO
+    }
+
+    fn handle_cabin_state(&mut self, cabin_state: CabinState) {
+        //TODO
+        // elevator.set_state(cabin_state);
+        // match cabin_state {
+        //     CabinState::DoorOpen { current_floor } => {
+        //         let lights = elevator.complete_request_at_floor(current_floor);
+        //         for light_control in lights {
+        //             light_control.send(&mut self.client_pool)
+        //         }
+        //     }
+        //     CabinState::Idle { .. } => {
+        //         let next_command = elevator.get_next_command();
+        //         if let Some(next_command) = next_command {
+        //             self.client_pool.send(
+        //                 Target::Specific(identifier),
+        //                 next_command
+        //             ).unwrap()
+        //         }
+        //     }
+        //     CabinState::Between { .. } => {}
+        //     CabinState::Init => {}
+        // }
+    }
+
+    pub fn execute_hall_request_assigner(&mut self) -> Result<(), String> {
         let hall_requests: Vec<[bool; 2]> = self.pool.iter()
             .filter(|elevator| !elevator.get_state().is_init())
             .map(|elevator| elevator.get_hall_requests())

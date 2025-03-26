@@ -1,11 +1,13 @@
 use common::data_struct::{CabinState, CallRequest};
 use crate::elevator::client::door_control::DoorControl;
-use driver_rust::elevio::elev::{Elevator, ElevatorEvent, FloorEvent, MotorDirection};
+use driver_rust::elevio::elev::{CallType, Elevator, ElevatorEvent, FloorEvent, MotorDirection};
 use std::time::Duration;
 use crossbeam_channel::Receiver;
 use driver_rust::elevio::elev::FloorEvent::{AtFloor, BetweenFloors};
+use crate::config::N_FLOOR;
 
 pub struct MinimalState {
+    cab_called: [bool; N_FLOOR as usize],
     cabin: CabinState,
     target: Option<u8>,
 }
@@ -26,6 +28,7 @@ impl ElevatorHardwareState {
         Self {
             door_control,
             state: MinimalState {
+                cab_called: [false; N_FLOOR as usize],
                 target: None,
                 cabin: Default::default(),
             },
@@ -67,7 +70,40 @@ impl ElevatorHardwareState {
         }
     }
 
-    pub fn init_if_is_not_yet(&mut self) { // TODO: ASK IF CORRECT
+    pub fn offline_handle_next_cab_call(&mut self) {
+        // Change call only when idling
+        if !self.state.cabin.is_idle() {
+            return;
+        }
+        let current_floor = self
+            .state
+            .cabin
+            .get_last_seen_floor();
+
+        let next_call: Option<(u8,u8)> = self.state
+            .cab_called
+            .iter()
+            .enumerate()
+            .filter_map(|(index, is_called)| {
+                if *is_called {
+                    let target_floor = index as u8;
+                    Some((target_floor, u8::abs_diff(current_floor, target_floor)))
+                } else {
+                    None
+                }
+            })
+            .min_by(|(_, d1), (_, d2)| {
+                d1.cmp(d2)
+            });
+
+        println!("NEXT_CALL: {next_call:?}");
+
+        if let Some((new_target, _)) = next_call {
+            self.set_new_target(new_target);
+        }
+    }
+
+    pub fn init_if_is_not_yet(&mut self) {
         if self.state.cabin == CabinState::Init {
             self.elevator.motor_direction(MotorDirection::Down);
         }
@@ -88,7 +124,10 @@ impl ElevatorHardwareState {
         self.elevator.motor_direction(MotorDirection::Stop);
         self.elevator.door_light(true);
         self.door_control.open_door();
-        self.state.cabin = CabinState::DoorOpen { current_floor: self.state.target.unwrap() };
+        let floor_reached = self.state.target.unwrap();
+        self.elevator.call_button_light(floor_reached, CallType::Cab, false);
+        self.state.cab_called[floor_reached as usize] = false;
+        self.state.cabin = CabinState::DoorOpen { current_floor: floor_reached };
         self.state.target = None;
         self.state.cabin
     }
@@ -109,7 +148,7 @@ impl ElevatorHardwareState {
 impl ElevatorHardwareState {
     pub fn handle_native_event(&mut self, event: ElevatorEvent) -> CabinState {
         match event {
-            ElevatorEvent::CallButton { .. } => self.state.cabin, // Do nothing
+            ElevatorEvent::CallButton { floor, call } => self.handle_call_button(floor, call),
             ElevatorEvent::FloorSensor { floor } => self.handle_floor_sensor_event(floor),
             ElevatorEvent::Obstruction { obstructed } => self.handle_obstruction(obstructed),
             ElevatorEvent::StopButton { .. } => self.state.cabin // TODO IMPLEMENT
@@ -120,6 +159,15 @@ impl ElevatorHardwareState {
         debug_assert!(self.state.cabin.is_door_open());
         self.elevator.door_light(false);
         self.state.cabin = CabinState::Idle { current_floor: self.state.cabin.get_last_seen_floor() };
+        self.state.cabin
+    }
+
+    fn handle_call_button(&mut self, floor: u8, call: CallType) -> CabinState {
+        if let CallType::Cab = call {
+            self.elevator.call_button_light(floor, CallType::Cab, true);
+            self.state.cab_called[floor as usize] = true;
+        }
+
         self.state.cabin
     }
 
@@ -135,7 +183,10 @@ impl ElevatorHardwareState {
             AtFloor(floor) => {
                 self.elevator.floor_indicator(floor);
                 match self.state.target {
-                    None => self.reach_idle(floor),
+                    None => {
+                        debug_assert!(self.state.cabin == CabinState::Init);
+                        self.reach_idle(floor)
+                    },
                     Some(target_floor) => {
                         if target_floor == floor { self.reach_target() }
                         else { self.reach_non_target_floor() }

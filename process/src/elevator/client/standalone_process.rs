@@ -1,14 +1,11 @@
+use crate::config::{HW_POLL_PERIOD, N_FLOOR};
 use crate::elevator::client::elevator_hardware::ElevatorHardwareState;
 use common::connection::event_handle::standalone_handle::standalone_handle::StandaloneHandle;
 use common::data_struct::CabinState;
 use common::messages::Message;
-use crossbeam_channel::{never, select};
+use crossbeam_channel::select;
 use driver_rust::elevio::elev::ElevatorEvent;
 use std::thread::{Builder, JoinHandle};
-use std::time::{Duration, Instant};
-
-const FLOOR_COUNT: u8 = 4; // TODO MOVE TO A CONFIG FILE
-const POLL_PERIOD: Duration = Duration::from_millis(25); // TODO MOVE TO A CONFIG FILE
 
 struct StandaloneProcessState {
     is_connected_to_controller: bool,
@@ -25,34 +22,21 @@ pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandl
         handle: standalone_handle.unwrap(),
         elevator: ElevatorHardwareState::new(
             "127.0.0.1:15657",
-            FLOOR_COUNT,
-            POLL_PERIOD
+            N_FLOOR,
+            HW_POLL_PERIOD
         ),
     };
-
-    // let tick_debug = tick(Duration::from_millis(250));
-    let tick_debug = never::<Instant>();
-    let mut a: u8 = 0;
 
     builder.spawn(move || {
         loop {
             select! {
-                recv(tick_debug) -> _ => {
-                    if process_state.is_connected_to_controller {
-                        a = a.wrapping_add(1);
-
-                        process_state.handle.send_message(
-                            Message::GotoFloor {go_to_floor: a}
-                        )
-                    }
-                }
-
-                recv(process_state.handle.recv_message()) -> message => {
+                recv(process_state.handle.recv_controller_message()) -> message => {
                     let message = message.unwrap();
                     process_state.handle_controller_message(message);
                 },
                 recv(process_state.elevator.recv_native_event()) -> event => {
                     let event = event.unwrap();
+                    println!("EVENT: {event:?}");
                     process_state.handle_native_event(event);
                 },
                 recv(process_state.elevator.receive_closed_door_event()) -> _ => {
@@ -64,8 +48,9 @@ pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandl
 }
 
 impl StandaloneProcessState {
+    #[inline]
     fn send_cabin_state_to_controller(&self, state: CabinState) {
-        self.handle.send_message(
+        self.handle.send_message_to_controller(
             Message::ClientCabinState {
                 cabin_state: state,
             }
@@ -82,6 +67,8 @@ impl StandaloneProcessState {
 
             Message::Disconnected => {
                 self.is_connected_to_controller = false;
+                // TODO MAKE HALL LIGHT FLASH TO INDICATE REFUSAL
+                // TODO CHANGE OPERATING MODE
                 println!("Disconnected from server, starting offline mode");
             }
 
@@ -103,19 +90,29 @@ impl StandaloneProcessState {
 
     fn handle_native_event(&mut self, event: ElevatorEvent) {
         let new_state = self.elevator.handle_native_event(event);
-        self.send_cabin_state_to_controller(new_state);
 
         if self.is_connected_to_controller {
-            self.handle.send_message(event.into());
-            // TODO ONLINE MODE
+            self.send_cabin_state_to_controller(new_state);
+            self.handle.send_message_to_controller(event.into());
         } else {
-            // TODO OFFLINE MODE
+            if let ElevatorEvent::CallButton {..} = event {
+                self.elevator.offline_handle_next_cab_call();
+            }
         }
     }
 
     fn handle_closed_door_event(&mut self) {
         let new_state = self.elevator.handle_closed_door_event();
-        self.send_cabin_state_to_controller(new_state);
+        if self.is_connected_to_controller {
+            // If is connected, let the controller handle the situation
+            self.send_cabin_state_to_controller(new_state);
+        } else {
+            // If is disconnected.
+            // Look into the current cabin pressed list and serve the nearest floor, priority to up.
+            // TODO THIS IS DEEPLY UNOPTIMIZED AND INEFFICIENT, THIS WILL HAVE TO CHANGE
+            // TODO Implement an algorithm to keep the same direction
+            self.elevator.offline_handle_next_cab_call();
+        }
     }
 
     fn handle_synchronisation(&mut self) {
