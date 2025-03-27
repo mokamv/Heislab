@@ -5,6 +5,7 @@ use common::messages::Message;
 use driver_rust::elevio::elev::MotorDirection;
 use std::vec;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
+use common::connection::event_handle::controller_handle::controller_handle::Target;
 
 const N_FLOOR: usize = 4; //TODO: Move to config file
 const N_BTN: usize = 3; //TODO: Move to config file
@@ -336,14 +337,6 @@ impl ElevatorState {
                         }
                     }
                 }
-                None
-            }
-        }
-
-        fn floor_to_index(&self, floor: u8) -> Option<usize> {
-            if floor < N_FLOOR as u8 {
-                Some(floor as usize)
-            } else {
                 None
             }
         }
