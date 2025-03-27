@@ -63,7 +63,7 @@ impl ElevatorState {
                     Target::Specific(self.identifier),
                     Message::LightControl { 
                         button: request,
-                        is_lit: self.request_matrix[f][btn]
+                        is_lit: self.request_matrix[f as usize][btn]
                     }
                 );
             }
