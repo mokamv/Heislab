@@ -55,19 +55,16 @@ impl ElevatorPool {
                 // TODO SEND TO CONTROLLER_SYNC FOR SYNC PUPROSE
                 elevator.add_request(request);
 
-                // Recompute requests repartition
                 let _ = execute_hall_request_assigner(self).unwrap();
 
-                // Send a message to synchronize lights on every client
-                if let CallRequest::Hall { .. } = request {
-                    controller_handle.send_client_message(
-                        Target::All,
-                        Message::LightControl {
-                            button: request,
-                            is_lit: true
-                        }
-                    )
-                };
+
+                for elevator in self.pool.iter() {
+                    elevator.set_all_lights(controller_handle);
+                }
+
+                for elevator in self.pool.iter() {
+                    elevator.fsm_on_request_button_press(controller_handle);
+                }
             }
 
             Message::ClientObstructed { is_obstructed } =>
