@@ -1,12 +1,12 @@
 use crate::elevator::client::elevator_hardware::ElevatorHardwareState;
 use common::connection::event_handle::standalone_handle::standalone_handle::StandaloneHandle;
-use common::data_struct::CabinState;
-use common::messages::Message;
 use crossbeam_channel::{never, select, tick, Receiver};
 use driver_rust::elevio::elev::ElevatorEvent;
 use std::thread::{Builder, JoinHandle};
 use std::time::Instant;
 use common::config::{EMERGENCY_BLINKING_PERIOD, HW_ADDRESS, HW_POLL_PERIOD, N_FLOOR};
+use common::data_structures::cabin_state::CabinState;
+use common::data_structures::network::message::Message;
 
 struct StandaloneProcessState {
     emergency_blinking: (bool, Receiver<Instant>),

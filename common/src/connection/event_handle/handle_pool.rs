@@ -5,13 +5,13 @@ use crate::connection::event_handle::standalone_handle::standalone_handle::{Stan
 use crate::connection::event_handle::standalone_handle::standalone_handle_pool_channels::StandaloneHandlePoolChannels;
 use crate::connection::receiver::epoll::epoll_receiver::EpollReceiver;
 use crate::connection::udp_impl::udp_ack_socket::UdpAckSocket;
-use crate::messages::PayloadNode;
 use crossbeam_channel::{Receiver, Select};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::thread::{Builder, JoinHandle};
 use std::time::Instant;
+use crate::data_structures::network::payload::NetworkPayloadNode;
 
 pub struct HandlePool {
     udp_socket: RefCell<UdpAckSocket>,
@@ -315,7 +315,7 @@ impl InternalHandlePool {
 
     fn initialize_resend_selector<'a>(
         &mut self,
-        current_resends: &'a Vec<(PayloadNode, PayloadNode, Receiver<Instant>)>,
+        current_resends: &'a Vec<(NetworkPayloadNode, NetworkPayloadNode, Receiver<Instant>)>,
         selector: &mut Select<'a>
     ) {
         for resend in current_resends.iter().enumerate() {

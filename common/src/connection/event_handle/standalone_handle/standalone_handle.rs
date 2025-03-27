@@ -1,8 +1,8 @@
 use crate::connection::event_handle::handle_state::ConnectionIdentifier;
 use crate::connection::event_handle::standalone_handle::standalone_handle_epoll_channels::StandaloneHandleEpollChannels;
 use crate::connection::event_handle::standalone_handle::standalone_handle_pool_channels::StandaloneHandlePoolChannels;
-use crate::messages::{Message, TimedMessage};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use crate::data_structures::network::message::{Message, TimedMessage};
 
 pub(in super::super) struct StandaloneHandleBuilder {
     pool_channels: Option<StandaloneHandlePoolChannels>,

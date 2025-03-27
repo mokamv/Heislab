@@ -1,14 +1,14 @@
-use crate::connection::constants::SEND_KEEP_ALIVE_PERIOD;
 use crate::connection::event_handle::handle_state::HandleState::{Connected, Disconnected};
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState, HANDLE_ACK_UNINIT, HANDLE_HASH_UNINIT};
 use crate::connection::udp_impl::udp_ack_socket::UdpAckSocket;
-use crate::messages::Message::KeepAlive;
-use crate::messages::{Message, Payload, PayloadNode, TimedMessage, TimedPayload};
 use crossbeam_channel::{tick, Receiver, Sender};
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::time::Instant;
-use Message::Ack;
+use crate::constants::UDP_KEEP_ALIVE_PERIOD;
+use crate::data_structures::network::message::{Message, TimedMessage};
+use crate::data_structures::network::message::Message::KeepAlive;
+use crate::data_structures::network::payload::{NetworkPayload, NetworkPayloadNode, TimedPayload};
 
 pub(in super::super) struct StandaloneHandlePoolChannels {
     connection_id: ConnectionIdentifier,
@@ -38,7 +38,7 @@ impl StandaloneHandlePoolChannels {
         to_handle_from_pool: Sender<Message>,
 
     ) -> Self {
-        let keep_alive_ticking = tick(SEND_KEEP_ALIVE_PERIOD);
+        let keep_alive_ticking = tick(UDP_KEEP_ALIVE_PERIOD);
 
         Self {
             keep_alive_ticking,
@@ -60,10 +60,10 @@ impl StandaloneHandlePoolChannels {
             ..
         } = &*self.state.borrow() {
             udp_socket.send_to_ignore_ack(
-                Payload::new_uninit(
+                NetworkPayload::new_uninit(
                     KeepAlive,
-                    PayloadNode::Client { client_id: self.connection_id },
-                    PayloadNode::Controller { controller_id: *connected_to }
+                    NetworkPayloadNode::Client { client_id: self.connection_id },
+                    NetworkPayloadNode::Controller { controller_id: *connected_to }
                 )
             )
         }
@@ -104,8 +104,8 @@ impl StandaloneHandlePoolChannels {
             ) => {
                 debug_assert!(since <= disconnected_since);
                 udp_socket.clear_route(
-                    PayloadNode::Client { client_id: self.connection_id },
-                    PayloadNode::Controller { controller_id: *connected_to },
+                    NetworkPayloadNode::Client { client_id: self.connection_id },
+                    NetworkPayloadNode::Controller { controller_id: *connected_to },
                 );
 
                 let _ = self.to_handle_from_pool
@@ -123,8 +123,8 @@ impl StandaloneHandlePoolChannels {
             ) => {
                 debug_assert!(since <= connected_since);
                 udp_socket.create_route(
-                    PayloadNode::Client { client_id: self.connection_id },
-                    PayloadNode::Controller { controller_id: *connected_to },
+                    NetworkPayloadNode::Client { client_id: self.connection_id },
+                    NetworkPayloadNode::Controller { controller_id: *connected_to },
                     *address
                 );
 
@@ -156,8 +156,8 @@ impl StandaloneHandlePoolChannels {
         } = borrowed_state.deref() {
             let timed_payload = TimedPayload::from(
                 timed_message,
-                PayloadNode::Client { client_id: self.connection_id },
-                PayloadNode::Controller { controller_id: *connected_to }
+                NetworkPayloadNode::Client { client_id: self.connection_id },
+                NetworkPayloadNode::Controller { controller_id: *connected_to }
             );
 
             if *since < timed_payload.timestamp() {
@@ -176,7 +176,7 @@ impl StandaloneHandlePoolChannels {
                 let payload = message_from_socket.payload();
                 match &payload.message() {
                     // Handle an ack message.
-                    Ack => {
+                    Message::Ack => {
                         udp_socket.acknowledged_by(payload);
                     }
                     message => {

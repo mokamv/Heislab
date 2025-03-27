@@ -1,12 +1,12 @@
-use crate::connection::constants::UDP_TIMEOUT;
 use crate::connection::event_handle::controller_handle::controller_handle::ControllerHandleState;
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState, HANDLE_ACK_UNINIT, HANDLE_HASH_UNINIT};
-use crate::messages::TimedPayload;
 use crossbeam_channel::Sender;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::time::Instant;
+use crate::constants::UDP_TIMEOUT;
+use crate::data_structures::network::payload::TimedPayload;
 
 pub(in super::super::super) struct ControllerHandleEpollChannels {
     controller_id: ConnectionIdentifier,

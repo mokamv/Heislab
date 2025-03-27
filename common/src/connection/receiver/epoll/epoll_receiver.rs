@@ -1,4 +1,3 @@
-use crate::connection::constants::ip_addresses::{COMMON_UDP_BIND_ADDR, HANDLE_UDP_LISTEN_ADDR};
 use crate::connection::event_handle::controller_handle::controller_handle_epoll_channels::ControllerHandleEpollChannels;
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState};
 use crate::connection::event_handle::standalone_handle::standalone_handle_epoll_channels::StandaloneHandleEpollChannels;
@@ -7,13 +6,14 @@ use crate::connection::receiver::epoll::receiver_type::Receiver;
 use crate::connection::receiver::wrapper::udp_broadcast_receiver::ErrorKind::RetryError;
 use crate::connection::receiver::wrapper::udp_broadcast_receiver::UdpBroadcastReceiver;
 use crate::connection::receiver::wrapper::udp_receiver::UdpDataReceiver;
-use crate::messages::{PayloadNode, TimedPayload};
+use crate::constants::{GLOBAL_BIND_ADDRESS, UDP_BC_LISTEN_ADDR};
+use crate::data_structures::controller_state::ControllerState;
+use crate::data_structures::controller_state::ControllerState::Master;
+use crate::data_structures::network::payload::{NetworkPayloadNode, TimedPayload};
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::os::fd::{AsRawFd, RawFd};
 use std::thread::{Builder, JoinHandle};
-use crate::data_struct::ControllerState;
-use crate::data_struct::ControllerState::Master;
 
 pub struct EpollReceiver {
     // Epoll directly related stuff (key, receivers and epoll_fd)
@@ -35,7 +35,7 @@ impl EpollReceiver {
             Err(err) => panic!("Syscall epoll_wait failed with {err}")
         };
 
-        let udp_data_socket = UdpDataReceiver::bind(COMMON_UDP_BIND_ADDR);
+        let udp_data_socket = UdpDataReceiver::bind(GLOBAL_BIND_ADDRESS);
         let udp_sender = udp_data_socket.get_sender();
 
         let mut epoll_receiver = Self {
@@ -46,7 +46,7 @@ impl EpollReceiver {
             controller_handle: None,
         };
 
-        let udp_broadcast_receiver = Receiver::UDPBroadcastSocket(UdpBroadcastReceiver::bind(HANDLE_UDP_LISTEN_ADDR));
+        let udp_broadcast_receiver = Receiver::UDPBroadcastSocket(UdpBroadcastReceiver::bind(UDP_BC_LISTEN_ADDR));
         epoll_receiver.add_receiver(udp_broadcast_receiver);
 
         let udp_data_receiver = Receiver::UDPDataSocket(udp_data_socket);
@@ -230,8 +230,8 @@ impl EpollReceiver {
         if message.is_keep_alive() {
             match (payload.sender(), payload.destination()) {
                 (
-                    PayloadNode::Client { client_id },
-                    PayloadNode::Controller { .. }
+                    NetworkPayloadNode::Client { client_id },
+                    NetworkPayloadNode::Controller { .. }
                 ) => {
                     let controller_handle = self.controller_handle
                         .as_ref()
@@ -258,8 +258,8 @@ impl EpollReceiver {
                 }
 
                 (
-                    PayloadNode::Controller { controller_id },
-                    PayloadNode::Client { client_id }
+                    NetworkPayloadNode::Controller { controller_id },
+                    NetworkPayloadNode::Client { client_id }
                 ) => {
                     let standalone_handle = self
                         .standalone_handle
@@ -282,8 +282,8 @@ impl EpollReceiver {
                 }
 
                 (
-                    PayloadNode::Sync,
-                    PayloadNode::Sync
+                    NetworkPayloadNode::Sync,
+                    NetworkPayloadNode::Sync
                 ) => {
                     // Get standalone handle instance
                     let controller_handle = self
@@ -323,8 +323,8 @@ impl EpollReceiver {
 
         match (payload.sender(), payload.destination()) {
             (
-                PayloadNode::Client { client_id },
-                PayloadNode::Controller { .. }
+                NetworkPayloadNode::Client { client_id },
+                NetworkPayloadNode::Controller { .. }
             ) => {
                 let controller_handle = self.controller_handle
                     .as_ref()
@@ -338,8 +338,8 @@ impl EpollReceiver {
             }
 
             (
-                PayloadNode::Controller { controller_id },
-                PayloadNode::Client { client_id }
+                NetworkPayloadNode::Controller { controller_id },
+                NetworkPayloadNode::Client { client_id }
             ) => {
                 let standalone_handle = self.standalone_handle
                     .as_ref()
@@ -353,8 +353,8 @@ impl EpollReceiver {
             }
 
             (
-                PayloadNode::Sync,
-                PayloadNode::Sync
+                NetworkPayloadNode::Sync,
+                NetworkPayloadNode::Sync
             ) => {
                 let controller_handle = self.controller_handle
                     .as_ref()

@@ -1,19 +1,19 @@
-use crate::connection::constants::ip_addresses::{CONTROLLER_UDP_BIND_ADDR, SERVER_UDP_BROADCAST_ADDR};
-use crate::connection::constants::{BROADCAST_PERIOD, SEND_KEEP_ALIVE_PERIOD};
 use crate::connection::event_handle::controller_handle::controller_handle::{ClientMessage, ControllerHandleState, SentControllerMessage, Target};
 use crate::connection::event_handle::handle_state::HandleState::{Connected, Disconnected};
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState, HANDLE_ACK_UNINIT, HANDLE_HASH_UNINIT};
+use crate::connection::udp_impl::shared_udp_socket::udp_socket_sharing_port;
 use crate::connection::udp_impl::udp_ack_socket::UdpAckSocket;
-use crate::messages::Message::{Ack, KeepAlive};
-use crate::messages::{Message, Payload, PayloadNode, TimedPayload};
+use crate::constants::{BROADCAST_PERIOD, CONTROLLER_BC_ADDR, CONTROLLER_BC_BIND_ADDR, UDP_KEEP_ALIVE_PERIOD};
+use crate::data_structures::controller_state::ControllerState;
+use crate::data_structures::network::message::Message;
+use crate::data_structures::network::message::Message::{Ack, KeepAlive};
+use crate::data_structures::network::payload::{NetworkPayload, NetworkPayloadNode, TimedPayload};
 use crossbeam_channel::{tick, Receiver, Sender};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::net::{SocketAddr, UdpSocket};
 use std::ops::{Deref, DerefMut};
 use std::time::Instant;
-use crate::connection::udp_impl::shared_udp_socket::udp_socket_sharing_port;
-use crate::data_struct::ControllerState;
 
 pub(in super::super) struct ControllerHandlePoolChannels {
     controller_id: ConnectionIdentifier,
@@ -56,13 +56,13 @@ impl ControllerHandlePoolChannels {
         to_handle_from_sync: Sender<Message>,
         from_handle_to_pool: Receiver<SentControllerMessage>,
     ) -> Self {
-        let udp_socket = udp_socket_sharing_port(CONTROLLER_UDP_BIND_ADDR)
+        let udp_socket = udp_socket_sharing_port(CONTROLLER_BC_BIND_ADDR)
             .unwrap();
         let _ = udp_socket.set_broadcast(true).unwrap();
-        let _ = udp_socket.connect(SERVER_UDP_BROADCAST_ADDR).unwrap();
+        let _ = udp_socket.connect(CONTROLLER_BC_ADDR).unwrap();
 
         let now = Instant::now();
-        let keep_alive_ticking = tick(SEND_KEEP_ALIVE_PERIOD);
+        let keep_alive_ticking = tick(UDP_KEEP_ALIVE_PERIOD);
 
         Self {
             keep_alive_ticking,
@@ -122,10 +122,10 @@ impl ControllerHandlePoolChannels {
         udp_socket: &mut UdpAckSocket
     ) {
         udp_socket.send_to_ignore_ack(
-            Payload::new_uninit(
+            NetworkPayload::new_uninit(
                 KeepAlive,
-                PayloadNode::Sync,
-                PayloadNode::Sync
+                NetworkPayloadNode::Sync,
+                NetworkPayloadNode::Sync
             )
         );
 
@@ -133,10 +133,10 @@ impl ControllerHandlePoolChannels {
             let client_id = *client_id;
 
             udp_socket.send_to_ignore_ack(
-                Payload::new_uninit(
+                NetworkPayload::new_uninit(
                     KeepAlive,
-                    PayloadNode::Controller { controller_id: self.controller_id },
-                    PayloadNode::Client { client_id }
+                    NetworkPayloadNode::Controller { controller_id: self.controller_id },
+                    NetworkPayloadNode::Client { client_id }
                 )
             );
         }
@@ -159,15 +159,15 @@ impl ControllerHandlePoolChannels {
         ) = match new_state {
             ControllerHandleState::ClientState { client_id, state } =>
                 (
-                    PayloadNode::Controller { controller_id: self.controller_id },
-                    PayloadNode::Client { client_id },
+                    NetworkPayloadNode::Controller { controller_id: self.controller_id },
+                    NetworkPayloadNode::Client { client_id },
                     self.clients_state.get(&client_id).unwrap(),
                     state
                 ),
             ControllerHandleState::SyncState { state } =>
                 (
-                    PayloadNode::Sync,
-                    PayloadNode::Sync,
+                    NetworkPayloadNode::Sync,
+                    NetworkPayloadNode::Sync,
                     &self.sync_state,
                     state
                 )
@@ -228,12 +228,12 @@ impl ControllerHandlePoolChannels {
         current_state_ref.replace(new_state);
     }
 
-    fn send_to_handle(&self, sender: PayloadNode, message: Message) {
+    fn send_to_handle(&self, sender: NetworkPayloadNode, message: Message) {
        let _ = match sender {
-            PayloadNode::Sync => self.to_handle_from_sync
+            NetworkPayloadNode::Sync => self.to_handle_from_sync
                 .send(message)
                 .unwrap(),
-            PayloadNode::Client { client_id } => self
+            NetworkPayloadNode::Client { client_id } => self
                 .to_handle_from_client_pool
                 .send(
                     ClientMessage {
@@ -259,8 +259,8 @@ impl ControllerHandlePoolChannels {
                 (
                     vec![(
                         &self.sync_state,
-                        PayloadNode::Sync,
-                        PayloadNode::Sync
+                        NetworkPayloadNode::Sync,
+                        NetworkPayloadNode::Sync
                     )],
                     message
                 )
@@ -272,8 +272,8 @@ impl ControllerHandlePoolChannels {
                             .iter()
                             .map(|(client_id, handle_state)| { (
                                 handle_state,
-                                PayloadNode::Controller { controller_id: self.controller_id },
-                                PayloadNode::Client { client_id: *client_id }
+                                NetworkPayloadNode::Controller { controller_id: self.controller_id },
+                                NetworkPayloadNode::Client { client_id: *client_id }
                             )
                             })
                             .collect();
@@ -283,8 +283,8 @@ impl ControllerHandlePoolChannels {
                         (
                             vec![(
                                 self.clients_state.get(&client_id).unwrap(),
-                                PayloadNode::Controller { controller_id: self.controller_id },
-                                PayloadNode::Client { client_id }
+                                NetworkPayloadNode::Controller { controller_id: self.controller_id },
+                                NetworkPayloadNode::Client { client_id }
                             )],
                             message
                         )
@@ -302,7 +302,7 @@ impl ControllerHandlePoolChannels {
 
             if let Connected { since, .. } = borrowed_state.deref_mut() {
                 if *since < timed_message.timestamp() {
-                    let payload = Payload::new_uninit(
+                    let payload = NetworkPayload::new_uninit(
                         timed_message.message(),
                         sender,
                         destination
@@ -323,10 +323,10 @@ impl ControllerHandlePoolChannels {
         let message = message_from_socket.payload().message();
 
         let handle_state = match destination {
-            PayloadNode::Sync => &self.sync_state,
-            PayloadNode::Controller { .. } => {
+            NetworkPayloadNode::Sync => &self.sync_state,
+            NetworkPayloadNode::Controller { .. } => {
                 let client_id = match sender {
-                    PayloadNode::Client { client_id } => client_id,
+                    NetworkPayloadNode::Client { client_id } => client_id,
                     _ => unreachable!()
                 };
                 self.clients_state.get(&client_id).unwrap()

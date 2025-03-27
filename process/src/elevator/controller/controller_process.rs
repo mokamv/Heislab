@@ -31,7 +31,7 @@ pub fn start_controller_process_thread(
                 recv(controller_handle.recv_sync_message()) -> message => {
                     let message = message.unwrap();
                     controller_sync.handle_sync_message(
-                        &elevator_pool,
+                        &mut elevator_pool,
                         &controller_handle,
                         message
                     );

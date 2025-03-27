@@ -3,10 +3,11 @@ use common::connection::event_handle::controller_handle::controller_handle::Targ
 use common::connection::event_handle::controller_handle::controller_handle::ControllerHandle;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::constants::{CAB_IDX, HALL_DOWN_IDX, HALL_UP_IDX, N_BUTTONS};
-use common::data_struct::{CabinState, CallRequest};
-use common::messages::Message;
 use driver_rust::elevio::elev::MotorDirection;
 use std::ops::BitOrAssign;
+use common::data_structures::cabin_state::CabinState;
+use common::data_structures::call_request::CallRequest;
+use common::data_structures::network::message::Message;
 
 #[derive(Debug)]
 pub struct ElevatorState {
@@ -260,7 +261,20 @@ impl ElevatorState {
         }
     }
 
-    pub fn update_request_matrix(&mut self, request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize]) {
+    pub fn merge_request_matrix(&mut self, request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize]) {
+        self.request_matrix
+            .iter_mut()
+            .enumerate()
+            .for_each(|(floor, floor_array)| {
+                floor_array.into_iter()
+                    .zip(request_matrix[floor].into_iter())
+                    .for_each(|(floor_value, new_value)| {
+                        floor_value.bitor_assign(new_value);
+                    })
+            });
+    }
+
+    pub fn replace_request_matrix(&mut self, request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize]) {
         self.request_matrix = request_matrix;
     }
 

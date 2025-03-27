@@ -2,7 +2,8 @@ use std::io::{Error, ErrorKind};
 use std::io::ErrorKind::{TimedOut, WouldBlock};
 use std::net::{SocketAddr, UdpSocket};
 use crate::connection::udp_impl::udp_read::UdpReadError::{InvalidMessageSize, NonControllerFrame, ReadBlocked, SocketError};
-use crate::messages::{Message, RawMessage, UNINIT_RAW_MESSAGE, RAW_MESSAGE_SIZE, RAW_PAYLOAD_SIZE, TimedPayload, RawPayload, UNINIT_RAW_PAYLOAD, Payload};
+use crate::data_structures::network::message::{Message, RawMessage, UNINIT_RAW_MESSAGE, RAW_MESSAGE_SIZE};
+use crate::data_structures::network::payload::{NetworkPayload, RawPayload, TimedPayload, RAW_PAYLOAD_SIZE, UNINIT_RAW_PAYLOAD};
 
 #[derive(Debug)]
 pub enum UdpReadError {
@@ -62,7 +63,7 @@ pub fn udp_read_one_message(
         Ok((RAW_PAYLOAD_SIZE, address))  => {
             Ok((
                 TimedPayload::of(
-                    Payload::decode_payload(&raw_message_buffer)?
+                    NetworkPayload::decode_payload(&raw_message_buffer)?
                 ),
                 address
             ))
@@ -85,7 +86,7 @@ pub fn udp_read_one_message_from_connected_socket(
     match read_result {
         // A potential message has been received
         Ok(RAW_PAYLOAD_SIZE) => Ok(TimedPayload::of(
-            Payload::decode_payload(&raw_message_buffer)?
+            NetworkPayload::decode_payload(&raw_message_buffer)?
         )),
         // Not enough data has been pulled to constitute a message, this is an error
         Ok(_) => Err(InvalidMessageSize),

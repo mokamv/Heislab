@@ -1,13 +1,14 @@
 use crate::elevator::controller::elevator_pool::ElevatorPool;
-use common::config::DELAY_TO_BECOME_MASTER;
+use common::config::{CLIENT_COUNT, DELAY_TO_BECOME_MASTER};
 use common::connection::event_handle::controller_handle::controller_handle::ControllerHandle;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use common::data_struct::ControllerState;
-use common::data_struct::ControllerState::MasterSteppingDown;
-use common::messages::Message;
 use crossbeam_channel::{after, never, Receiver};
 use std::time::Instant;
-use ControllerState::{Backup, Master};
+use common::data_structures::controller_state::ControllerState;
+use common::data_structures::controller_state::ControllerState::{Backup, Master, MasterSteppingDown};
+use common::data_structures::full_requests_matrix::FullControllerRequestsMatrix;
+use common::data_structures::network::message::Message;
+use crate::elevator::controller::requests_assigner::execute_hall_request_assigner;
 
 pub(in super) struct ControllerSync {
     is_connected: bool,
@@ -49,7 +50,7 @@ impl ControllerSync {
 
     pub(in super) fn handle_sync_message(
         &mut self,
-        elevator_pool: &ElevatorPool,
+        elevator_pool: &mut ElevatorPool,
         controller_handle: &ControllerHandle,
         message: Message
     ) {
@@ -85,8 +86,18 @@ impl ControllerSync {
                 recv_controller_state
             ),
 
-            Message::ControllerSyncMerge { .. } => self.handle_state_merge(controller_handle),
-            Message::ControllerSyncReplace { .. } => self.handle_state_replace(controller_handle),
+            Message::ControllerSyncMerge { full_matrix } =>
+                self.handle_state_merge(
+                    elevator_pool,
+                    controller_handle,
+                    full_matrix
+                ),
+            Message::ControllerSyncReplace { full_matrix } =>
+                self.handle_state_replace(
+                    elevator_pool,
+                    controller_handle,
+                    full_matrix
+                ),
             Message::ControllerSyncFinish => self.handle_state_finish(controller_handle),
 
             _ => {}
@@ -177,7 +188,9 @@ impl ControllerSync {
 
     fn handle_state_replace(
         &mut self,
-        controller_handle: &ControllerHandle
+        elevator_pool: &mut ElevatorPool,
+        controller_handle: &ControllerHandle,
+        full_matrix: FullControllerRequestsMatrix
     ) {
         match self.controller_state {
             Backup => { /*TODO HANDLE STATE REPLACE*/ }
@@ -190,7 +203,9 @@ impl ControllerSync {
 
     fn handle_state_merge(
         &mut self,
-        controller_handle: &ControllerHandle
+        elevator_pool: &mut ElevatorPool,
+        controller_handle: &ControllerHandle,
+        full_matrix: FullControllerRequestsMatrix
     ) {
         match self.controller_state {
             // Backup shouldn't be merged
@@ -199,7 +214,29 @@ impl ControllerSync {
             MasterSteppingDown => {}
             // Merge state with the master
             Master => {
-                //TODO HANDLE MERGING
+                // TODO COMMENT
+                elevator_pool.pool[0]
+                    .merge_request_matrix(
+                        full_matrix.get_requests_matrix_of(0)
+                    );
+
+                // TODO COMMENT
+                if CLIENT_COUNT > 1 {
+                    elevator_pool.pool[1..]
+                        .iter_mut()
+                        .for_each(|elevator_state| {
+                            elevator_state.merge_cab_requests(
+                                full_matrix.get_cab_requests_of(
+                                    elevator_state.identifier()
+                                )
+                            )
+                        })
+                }
+
+                // After restoring the state, reschedule everything
+                let _ = execute_hall_request_assigner(elevator_pool).unwrap();
+
+                // TODO SEND THINGS TO CLIENT?
 
                 // After successful merging, sends ok to other controller so that it can step down.
                 controller_handle.send_sync_message(

@@ -5,7 +5,8 @@ use driver_rust::elevio::elev::MotorDirection;
 use serde_json::json;
 use common::config::N_FLOOR;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use common::data_struct::{CabinState, CallRequest};
+use common::data_structures::cabin_state::CabinState;
+use common::data_structures::call_request::CallRequest;
 use crate::elevator::controller::elevator_pool::ElevatorPool;
 
 pub(super) fn execute_hall_request_assigner(

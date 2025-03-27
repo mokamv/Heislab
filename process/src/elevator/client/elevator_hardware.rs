@@ -1,10 +1,11 @@
-use common::data_struct::{CabinState, CallRequest};
 use crate::elevator::client::door_control::DoorControl;
 use driver_rust::elevio::elev::{CallType, Elevator, ElevatorEvent, FloorEvent, MotorDirection};
 use std::time::Duration;
 use crossbeam_channel::Receiver;
 use driver_rust::elevio::elev::FloorEvent::{AtFloor, BetweenFloors};
 use common::config::N_FLOOR;
+use common::data_structures::cabin_state::CabinState;
+use common::data_structures::call_request::CallRequest;
 
 pub struct MinimalState {
     cab_called: [bool; N_FLOOR as usize],

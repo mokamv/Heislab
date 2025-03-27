@@ -4,9 +4,12 @@ use crate::elevator::controller::requests_assigner::execute_hall_request_assigne
 use common::config::{CLIENT_COUNT, N_FLOOR};
 use common::connection::event_handle::controller_handle::controller_handle::{ControllerHandle, Target};
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use common::data_struct::{CabinState, CallLightArray, CallRequest, FullControllerRequestsMatrix};
-use common::messages::Message;
 use std::ops::BitOrAssign;
+use common::data_structures::cabin_state::CabinState;
+use common::data_structures::call_light_array::CallLightArray;
+use common::data_structures::call_request::CallRequest;
+use common::data_structures::full_requests_matrix::FullControllerRequestsMatrix;
+use common::data_structures::network::message::Message;
 
 pub struct ElevatorPool {
     pub(super) pool: [ElevatorState; CLIENT_COUNT as usize]

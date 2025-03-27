@@ -1,12 +1,12 @@
-use crate::connection::constants::UDP_RETRY;
-use crate::messages::{Payload, PayloadNode};
 use crossbeam_channel::{after, never, Receiver};
 use std::collections::{HashMap, VecDeque};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Instant;
+use crate::constants::UDP_RESEND_AFTER;
+use crate::data_structures::network::payload::{NetworkPayload, NetworkPayloadNode};
 
 pub const ACK_IGNORE: usize = usize::MAX;
-pub type MapperKey = ( PayloadNode, PayloadNode );
+pub type MapperKey = (NetworkPayloadNode, NetworkPayloadNode);
 
 struct MapperValue {
     last_recv_ack: usize,
@@ -14,7 +14,7 @@ struct MapperValue {
     hash: usize,
     retry_recv: Receiver<Instant>,
     address: SocketAddr,
-    payloads: VecDeque<Payload>
+    payloads: VecDeque<NetworkPayload>
 }
 
 pub struct UdpAckSocket {
@@ -32,7 +32,7 @@ impl UdpAckSocket {
         }
     }
 
-    pub fn get_retry_receivers(&self) -> Vec<(PayloadNode, PayloadNode, Receiver<Instant>)> {
+    pub fn get_retry_receivers(&self) -> Vec<(NetworkPayloadNode, NetworkPayloadNode, Receiver<Instant>)> {
         let mut receivers = vec![];
         for (key, recv) in &self.routes {
             receivers.push((
@@ -46,7 +46,7 @@ impl UdpAckSocket {
 
     pub fn send_to_ignore_ack(
         &mut self,
-        mut payload: Payload
+        mut payload: NetworkPayload
     ) {
         let key: MapperKey = (payload.sender(), payload.destination());
         let route_value = self
@@ -69,7 +69,7 @@ impl UdpAckSocket {
 
     pub fn send_to(
         &mut self,
-        mut payload: Payload,
+        mut payload: NetworkPayload,
     ) {
         debug_assert!(!payload.message().is_keep_alive());
 
@@ -94,15 +94,15 @@ impl UdpAckSocket {
                 &payload.encode(),
                 route_value.address
             );
-            route_value.retry_recv = after(UDP_RETRY);
+            route_value.retry_recv = after(UDP_RESEND_AFTER);
             // println!("SENDING: {:?} at {:?} to {}", payload, Instant::now(), route_value.address);
         }
     }
 
     pub fn resend(
         &mut self,
-        sender: PayloadNode,
-        destination: PayloadNode
+        sender: NetworkPayloadNode,
+        destination: NetworkPayloadNode
     ) {
         let key: MapperKey = (sender, destination);
         debug_assert!(self.routes.get(&key).is_some());
@@ -117,24 +117,24 @@ impl UdpAckSocket {
             .front()
             .unwrap();
 
-        println!("RESENDING: {:?} at {:?}", resent_payload, Instant::now());
+        // println!("RESENDING: {:?} at {:?}", resent_payload, Instant::now());
 
         // TODO ERROR HANDLE
         let _ = self.udp_socket.send_to(
             &resent_payload.encode(),
             route_value.address
         );
-        route_value.retry_recv = after(UDP_RETRY);
+        route_value.retry_recv = after(UDP_RESEND_AFTER);
     }
 
     pub fn send_acknowledge_for(
         &mut self,
-        payload_to_ack: Payload
+        payload_to_ack: NetworkPayload
     ) {
         // println!("SENDING ACKNOWLEDGING: {}", payload_to_ack.ack());
         debug_assert!(!payload_to_ack.message().is_ack());
 
-        let ack_payload = Payload::ack_from(payload_to_ack);
+        let ack_payload = NetworkPayload::ack_from(payload_to_ack);
 
         let key = (payload_to_ack.destination(), payload_to_ack.sender());
 
@@ -159,7 +159,7 @@ impl UdpAckSocket {
 
     pub fn acknowledged_by(
         &mut self,
-        ack_payload: Payload
+        ack_payload: NetworkPayload
     ) {
         // println!("ACKNOWLEDGING: {} at {:?}", ack_payload.ack(), Instant::now());
 
@@ -203,14 +203,14 @@ impl UdpAckSocket {
                 );
 
                 // println!("SENDING FROM QUEUE: {} at {:?}", next_payload.ack(), Instant::now());
-                route_value.retry_recv = after(UDP_RETRY);
+                route_value.retry_recv = after(UDP_RESEND_AFTER);
             }
         }
     }
 
     pub fn has_payload_already_been_received(
         &mut self,
-        payload: Payload
+        payload: NetworkPayload
     ) -> bool {
         let key = (payload.destination(), payload.sender());
 
@@ -234,8 +234,8 @@ impl UdpAckSocket {
 
     pub fn create_route(
         &mut self,
-        sender: PayloadNode,
-        destination: PayloadNode,
+        sender: NetworkPayloadNode,
+        destination: NetworkPayloadNode,
         address: SocketAddr,
     ) {
         let key: MapperKey = (sender, destination);
@@ -255,8 +255,8 @@ impl UdpAckSocket {
 
     pub fn clear_route(
         &mut self,
-        sender: PayloadNode,
-        destination: PayloadNode
+        sender: NetworkPayloadNode,
+        destination: NetworkPayloadNode
     ) {
         let key: MapperKey = (sender, destination);
         debug_assert!(self.routes.get(&key).is_some());

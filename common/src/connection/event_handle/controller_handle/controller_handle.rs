@@ -1,10 +1,10 @@
 use crate::connection::event_handle::controller_handle::controller_handle_epoll_channels::ControllerHandleEpollChannels;
 use crate::connection::event_handle::controller_handle::controller_handle_pool_channels::ControllerHandlePoolChannels;
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState};
-use crate::messages::{Message, TimedMessage};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
-use crate::data_struct::ControllerState;
+use crate::data_structures::controller_state::ControllerState;
+use crate::data_structures::network::message::{Message, TimedMessage};
 
 #[derive(Debug, Copy, Clone)]
 pub enum Target {

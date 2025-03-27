@@ -1,8 +1,8 @@
-use crate::messages::TimedPayload;
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
 use crate::connection::udp_impl::udp_read::udp_read_one_message;
+use crate::data_structures::network::payload::TimedPayload;
 
 pub(in super::super) struct UdpDataReceiver {
     listener: UdpSocket

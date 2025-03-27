@@ -1,12 +1,12 @@
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
-use crate::connection::constants::ip_addresses::CONTROLLER_UDP_BIND_PORT;
+use crate::config::CONTROLLER_BC_BIND_PORT;
 use crate::connection::event_handle::handle_state::ConnectionIdentifier;
 use crate::connection::receiver::wrapper::udp_broadcast_receiver::ErrorKind::{RetryError, UnexpectedMessageType};
 use crate::connection::udp_impl::shared_udp_socket::udp_socket_sharing_port;
 use crate::connection::udp_impl::udp_read::{upd_read_one_bc_message_on_port, UdpReadError};
-use crate::data_struct::ControllerState;
-use crate::messages::Message;
+use crate::data_structures::controller_state::ControllerState;
+use crate::data_structures::network::message::Message;
 
 pub(in super::super) struct UdpBroadcastReceiver {
     udp_socket: UdpSocket
@@ -39,7 +39,7 @@ impl UdpBroadcastReceiver {
     ) -> Result<(ConnectionIdentifier, ControllerState, SocketAddr), UdpBroadcastError> {
         let message = upd_read_one_bc_message_on_port(
             &mut self.udp_socket,
-            CONTROLLER_UDP_BIND_PORT
+            CONTROLLER_BC_BIND_PORT
         )?;
         match message {
             Message::ControllerAddress {
