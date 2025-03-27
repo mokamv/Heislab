@@ -7,6 +7,11 @@ use std::vec;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 
 const N_FLOOR: usize = 4; //TODO: Move to config file
+const N_BTN: usize = 3; //TODO: Move to config file
+
+const HALL_UP_IDX: usize = 0; //TODO: Use these?
+const HALL_DOWN_IDX: usize = 1;
+const CAB_IDX: usize = 2;
 
 pub struct ElevatorState {
     identifier: ConnectionIdentifier,
@@ -14,7 +19,7 @@ pub struct ElevatorState {
     is_obstructed: bool,
     last_direction: MotorDirection, // Last non-stop direction
     state: CabinState,
-    request_matrix: Vec<[bool; 3]>, // [ hall up | hall down | cab ]
+    request_matrix: Vec<[bool; N_BTN]>, // [ hall up | hall down | cab ]
 }
 
 impl ElevatorState {
@@ -27,7 +32,7 @@ impl ElevatorState {
         }
 
         controller_handle.send_client_message(
-            self.identifier,
+            Target::Specific(self.identifier),
             Message::GotoFloor { go_to_floor: next_floor.unwrap() }
         );
         
@@ -36,8 +41,8 @@ impl ElevatorState {
     // Light control methods
 
     pub fn set_all_lights(&self, controller_handle: &ControllerHandle) {
-        for f in 0..self.get_total_floors() {
-            for btn in 0..3 {
+        for f in 0..N_FLOOR {
+            for btn in 0..N_BTN {
                 let request = match btn {
                     0 => CallRequest::Hall { 
                         floor: f as u8, 
@@ -54,7 +59,7 @@ impl ElevatorState {
                 };
     
                 controller_handle.send_client_message(
-                    self.identifier,
+                    Target::Specitic(self.identifier),
                     Message::LightControl { 
                         button: request,
                         is_lit: self.request_matrix[f][btn]
@@ -91,12 +96,12 @@ impl ElevatorState {
 impl ElevatorState {
     // Request functions:
     pub fn requests_above(&self, floor: u8) -> bool {
-        if floor as usize >= self.get_total_floors()-1{
+        if floor as usize >= N_FLOOR-1{
             return false;
         }
 
-        for f in floor as usize + 1..self.get_total_floors() {
-            for btn in 0..3 {
+        for f in floor as usize + 1..N_FLOOR {
+            for btn in 0..N_BTN {
                 if self.request_matrix[f][btn] {
                     return true;
                 }
@@ -111,7 +116,7 @@ impl ElevatorState {
         }
 
         for f in 0..floor as usize {
-            for btn in 0..3 {
+            for btn in 0..N_BTN {
                 if self.request_matrix[f][btn] {
                     return true;
                 }
@@ -121,7 +126,7 @@ impl ElevatorState {
     }
 
     pub fn requests_at_current_floor(&self, floor: u8) -> bool {
-        for btn in 0..3 {
+        for btn in 0..N_BTN {
             if self.request_matrix[floor as usize][btn] {
                 return true;
             }
@@ -203,12 +208,8 @@ impl ElevatorState {
             is_obstructed: false,
             last_direction: MotorDirection::Stop,
             state: CabinState::default(),
-            request_matrix: vec![[false; 3]; N_FLOOR]
+            request_matrix: vec![[false; N_BTN]; N_FLOOR]
         }
-    }
-
-    pub fn get_total_floors(&self) -> usize {
-        self.request_matrix.len()
     }
 
     pub(super) fn identifier(&self) -> ConnectionIdentifier {
@@ -227,11 +228,11 @@ impl ElevatorState {
         &self.state
     }
 
-    pub fn get_state_mut(&self) -> &CabinState {
-        &self.state
+    pub fn get_state_mut(&mut self) -> &mut CabinState {
+        &mut self.state
     }
 
-    pub fn get_request_matrix(&self) -> &Vec<[bool; 3]> {
+    pub fn get_request_matrix(&self) -> &Vec<[bool; N_BTN]> {
         &self.request_matrix
     }
 
@@ -240,7 +241,7 @@ impl ElevatorState {
     }
 
     pub fn can_receive(&self) -> bool {
-        ! self.state.is_door_open()
+        !self.state.is_door_open()
     }
 
     pub fn add_request(&mut self, request: CallRequest) { // TODO: Error if request is not valid
@@ -282,7 +283,7 @@ impl ElevatorState {
             .collect()
     }
 
-    pub fn update_request_matrix(&mut self, request_matrix: Vec<[bool; 3]>) {
+    pub fn update_request_matrix(&mut self, request_matrix: Vec<[bool; N_BTN]>) {
         self.request_matrix = request_matrix;
     }
 
@@ -304,7 +305,7 @@ impl ElevatorState {
             
             MotorDirection::Up => {
                 // Check for requests above current floor
-                for floor in current_floor + 1..self.get_total_floors() as u8 {
+                for floor in current_floor + 1..N_FLOOR {
                     if self.requests_at_current_floor(floor) {
                         return Some(floor);
                     }
@@ -329,7 +330,7 @@ impl ElevatorState {
                 }
                 // If no requests below, check above (change direction)
                 if self.requests_above(current_floor) {
-                    for floor in current_floor + 1..self.get_total_floors() as u8 {
+                    for floor in current_floor + 1..N_FLOOR {
                         if self.requests_at_current_floor(floor) {
                             return Some(floor);
                         }
@@ -338,6 +339,15 @@ impl ElevatorState {
                 None
             }
         }
+
+        fn floor_to_index(&self, floor: u8) -> Option<usize> {
+            if floor < N_FLOOR as u8 {
+                Some(floor as usize)
+            } else {
+                None
+            }
+        }
+
     }
     //  TODO: Check if correct
     // Get next floor to visit based on current requests
