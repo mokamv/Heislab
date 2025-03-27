@@ -147,11 +147,7 @@ impl ElevatorPool {
                 }
             }
             CabinState::DoorOpen { current_floor, .. } => {
-                // Clear finished request from the elevator request matrix, and turn off the light
-                // If door is open, and there are hall_requests there on their way up or down, we
-                // also have to clear the request and turn off the light accordingly
 
-                let last_direction = elevator.get_last_direction();
                 let next_command = elevator.get_next_command();
 
                 elevator.clear_cab_requests_at_floor(current_floor);
@@ -166,35 +162,52 @@ impl ElevatorPool {
                 //     }
                 // );
 
-                match last_direction {
+                let direction = elevator.get_last_direction();
+
+                match direction {
                     MotorDirection::Up => {
+                        // Clear up requests at this floor
                         elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
-                        controller_handle.send_client_message(
-                            Target::All,
-                            Message::LightControl {
-                                button: CallRequest::Hall {
-                                    floor: current_floor,
-                                    direction: MotorDirection::Up
-                                },
-                                is_lit: false
-                            }
-                        );
+                        // Also clear down requests if no more requests above
+                        if !elevator.requests_above(current_floor) {
+                            elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
+                        }
                     }
                     MotorDirection::Down => {
+                        // Clear down requests at this floor
                         elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
-                        controller_handle.send_client_message(
-                            Target::All,
-                            Message::LightControl {
-                                button: CallRequest::Hall {
-                                    floor: current_floor,
-                                    direction: MotorDirection::Down
-                                },
-                                is_lit: false
-                            }
-                        );
+                        // Also clear up requests if no more requests below
+                        if !elevator.requests_below(current_floor) {
+                            elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
+                        }
                     }
-                    MotorDirection::Stop => {}
+                    MotorDirection::Stop => {
+                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
+                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
+                    }
                 }
+
+                // Update lights for all clients
+                controller_handle.send_client_message(
+                    Target::All,
+                    Message::LightControl {
+                        button: CallRequest::Hall {
+                            floor: current_floor,
+                            direction: MotorDirection::Up
+                        },
+                        is_lit: false
+                    }
+                );
+                controller_handle.send_client_message(
+                    Target::All,
+                    Message::LightControl {
+                        button: CallRequest::Hall {
+                            floor: current_floor,
+                            direction: MotorDirection::Down
+                        },
+                        is_lit: false
+                    }
+                );
             }
             _ => {}
         }
