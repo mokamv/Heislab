@@ -131,8 +131,8 @@ impl ElevatorPool {
                 let next_command = elevator.get_next_command();
                 if let Some(next_command) = next_command {
                     controller_handle.send_client_message(
-                        Target::Specific(self.identifier),
-                        Message::GotoFloor { go_to_floor: next_command.unwrap() }
+                        Target::Specific(elevator_id),
+                        Message::GotoFloor { go_to_floor: next_command }
                     );
                 }
             }
