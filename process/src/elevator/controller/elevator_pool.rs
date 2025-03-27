@@ -137,6 +137,8 @@ impl ElevatorPool {
         match cabin_state {
             CabinState::Idle { .. } => {
                 let next_command = elevator.get_next_command();
+                println!("Next command: ");
+                println!("{next_command:?}");
                 if let Some(next_command) = next_command {
                     controller_handle.send_client_message(
                         Target::Specific(elevator_id),
