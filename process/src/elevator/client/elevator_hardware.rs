@@ -88,7 +88,6 @@ impl ElevatorHardwareState {
     pub fn find_closest_call(&mut self, last_floor: u8, to_floor: Option<u8>) {
         let motor_direction = self.state.cabin.get_direction();
 
-        //TODO: choose code
         let next_call: Option<(u8, u8)> = self.state
             .cab_called
             .iter()
@@ -105,36 +104,41 @@ impl ElevatorHardwareState {
                     None
                 }
 
-                //SAME code but more readable????????????????
-                // if *is_called {
-                //     let target_floor = index as u8;
-                        
-                //     match motor_direction {
-                //         MotorDirection::Up => {
-                //             if target_floor > last_floor {
-                //                 Some((target_floor, target_floor - last_floor))
-                //             } else {
-                //                 None
-                //             }
-                //         }
-                //         MotorDirection::Down => {
-                //             if target_floor < last_floor {
-                //                 Some((target_floor, last_floor - target_floor))
-                //             } else {
-                //                 None
-                //             }
-                //         }
-                //         MotorDirection::Stop => {
-                //             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
-                //         }
-                //         _ => unreachable!(),
-                //     }
-                // } 
-                // else {
-                //     None
-                // }
             })
             .min_by(|(_, d1), (_, d2)| {d1.cmp(d2)});
+
+        // let next_call: Option<(u8, u8)> = self.state
+        //     .cab_called
+        //     .iter()
+        //     .enumerate()
+        //     .filter_map(|(index, is_called)| {
+        //         let target_floor = index as u8;
+        //         if *is_called{
+        //             match motor_direction {
+        //                 MotorDirection::Up if target_floor > last_floor => {
+        //                     Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+        //                 },
+        //                 MotorDirection::Down if target_floor < last_floor => {
+        //                     Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+        //                 },
+        //                 MotorDirection::Stop => {
+        //                     match last_motordirection => {
+        //                         MotorDirection::Up if target_floor > last_floor => {
+        //                             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+        //                         },
+        //                         MotorDirection::Down if target_floor < last_floor => {
+        //                             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+        //                         },
+        //                         _ => None //OBS: crash????
+        //                     }
+        //                 }
+        //             }
+        //         } else {
+        //             None
+        //         }
+
+        //     })
+        //     .min_by(|(_, d1), (_, d2)| {d1.cmp(d2)});
             
         println!("NEXT_CALL: {next_call:?}");
 
