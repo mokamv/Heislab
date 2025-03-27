@@ -306,6 +306,19 @@ impl FullControllerRequestsMatrix {
         raw_output[CLIENT_COUNT as usize..FCRM_RAW_SIZE].copy_from_slice(&clients);
         raw_output
     }
+
+    pub(super) fn decode(raw_bytes: &[u8]) -> Self {
+        debug_assert_eq!(raw_bytes.len(), FCRM_RAW_SIZE);
+        let clients_ids = [0u8; CLIENT_COUNT as usize];
+        let clients = [[false; (2 + CLIENT_COUNT) as usize]; N_FLOOR as usize];
+        
+        Self {
+            client_ids: clients_ids,
+            clients,
+        }
+
+
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]

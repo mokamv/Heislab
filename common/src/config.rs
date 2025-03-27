@@ -10,7 +10,7 @@ pub const VALID_CLIENT_IDS: [ConnectionIdentifier; CLIENT_COUNT as usize] =
 
 pub const HW_POLL_PERIOD: Duration = Duration::from_millis(25);
 
-pub const HW_ADDRESS: &str = "127.0.0.1:15657";
+pub const HW_ADDRESS: &str = "127.0.0.1:15000";
 
 pub const EMERGENCY_BLINKING_PERIOD: Duration = Duration::from_millis(1000);
 
