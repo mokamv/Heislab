@@ -15,3 +15,5 @@ pub const HW_ADDRESS: &str = "127.0.0.1:15000";
 pub const EMERGENCY_BLINKING_PERIOD: Duration = Duration::from_millis(1000);
 
 pub const DELAY_TO_BECOME_MASTER: Duration = Duration::from_secs(3);
+
+pub const DOOR_OPEN_DURATION_S: Duration = Duration::from_secs(3);

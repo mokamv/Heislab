@@ -7,14 +7,9 @@ use common::messages::Message;
 use driver_rust::elevio::elev::MotorDirection;
 use std::vec;
 use common::config::N_FLOOR;
+use common::constants::{ HALL_UP_IDX, HALL_DOWN_IDX, CAB_IDX, N_BTN };
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::connection::event_handle::controller_handle::controller_handle::Target;
-
-const N_BTN: usize = 3; //TODO: Move to config file
-
-const HALL_UP_IDX: usize = 0; //TODO: Use these?
-const HALL_DOWN_IDX: usize = 1;
-const CAB_IDX: usize = 2;
 
 pub struct ElevatorState {
     identifier: ConnectionIdentifier,
@@ -22,7 +17,7 @@ pub struct ElevatorState {
     is_obstructed: bool,
     last_direction: MotorDirection, // Last non-stop direction
     state: CabinState,
-    request_matrix: [[bool; 3]; N_FLOOR as usize], // [ hall up | hall down | cab ]
+    request_matrix: [[bool; N_BTN]; N_FLOOR as usize], // [ hall up | hall down | cab ]
 }
 
 impl ElevatorState {
@@ -149,15 +144,15 @@ impl ElevatorState {
         match direction {
             MotorDirection::Up => {
                 return {
-                    self.request_matrix[current_floor as usize][0] || // Hall up
-                    self.request_matrix[current_floor as usize][2] || // Cab
+                    self.request_matrix[current_floor as usize][HALL_UP_IDX] || // Hall up
+                    self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
                     !self.requests_above(current_floor)
                 }
             }
             MotorDirection::Down => {
                 return {
-                    self.request_matrix[current_floor as usize][1] || // Hall down
-                    self.request_matrix[current_floor as usize][2] || // Cab
+                    self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || // Hall down
+                    self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
                     !self.requests_below(current_floor)
                 }
             }
@@ -167,7 +162,7 @@ impl ElevatorState {
     }
 
     pub fn check_should_clear_request_immediately(&self, floor: u8, request: CallRequest) -> bool {
-        self.request_matrix[floor as usize][2]
+        self.request_matrix[floor as usize][CAB_IDX]
     }
 
 }
@@ -180,7 +175,7 @@ impl ElevatorState {
             is_obstructed: false,
             last_direction: MotorDirection::Stop,
             state: CabinState::default(),
-            request_matrix: [[false; 3]; N_FLOOR as usize]
+            request_matrix: [[false; N_BTN]; N_FLOOR as usize]
         }
     }
 
@@ -204,7 +199,7 @@ impl ElevatorState {
         &mut self.state
     }
 
-    pub fn get_request_matrix(&self) -> [[bool; 3]; N_FLOOR as usize] {
+    pub fn get_request_matrix(&self) -> [[bool; N_BTN]; N_FLOOR as usize] {
         self.request_matrix
     }
 
@@ -220,13 +215,13 @@ impl ElevatorState {
         match request {
             CallRequest::Hall { floor, direction } => {
                 match direction {
-                    MotorDirection::Up => self.request_matrix[floor as usize][0] = true,
-                    MotorDirection::Down => self.request_matrix[floor as usize][1] = true,
+                    MotorDirection::Up => self.request_matrix[floor as usize][HALL_UP_IDX] = true,
+                    MotorDirection::Down => self.request_matrix[floor as usize][HALL_DOWN_IDX] = true,
                     MotorDirection::Stop => unreachable!()
                 }
             }
             CallRequest::Cab { floor } => {
-                self.request_matrix[floor as usize][2] = true;
+                self.request_matrix[floor as usize][CAB_IDX] = true;
             }
         }
     }
@@ -234,8 +229,8 @@ impl ElevatorState {
     // Clear hall requests
     pub fn clear_hall_requests(&mut self) {
         for floor_requests in self.request_matrix.iter_mut() {
-            floor_requests[0] = false; // Clear hall up
-            floor_requests[1] = false; // Clear hall down
+            floor_requests[HALL_UP_IDX] = false; // Clear hall up
+            floor_requests[HALL_DOWN_IDX] = false; // Clear hall down
         }
     }
 
@@ -253,7 +248,7 @@ impl ElevatorState {
     pub fn get_cab_requests(&self) -> [bool; N_FLOOR as usize] {
         self.request_matrix
             .iter()
-            .map(|floor| floor[2]) // Get only cab requests
+            .map(|floor| floor[CAB_IDX]) // Get only cab requests
             .collect::<Vec<bool>>()
             .try_into()
             .unwrap()
@@ -263,11 +258,11 @@ impl ElevatorState {
         for (floor, value) in cab_requests.into_iter().enumerate() {
             self.request_matrix
                 .get_mut(floor)
-                .unwrap()[2].bitor_assign(value);
+                .unwrap()[CAB_IDX].bitor_assign(value);
         }
     }
 
-    pub fn update_request_matrix(&mut self, request_matrix: [[bool; 3]; N_FLOOR as usize]) {
+    pub fn update_request_matrix(&mut self, request_matrix: [[bool; N_BTN]; N_FLOOR as usize]) {
         self.request_matrix = request_matrix;
     }
 
