@@ -221,7 +221,7 @@ impl ElevatorState {
                 }
                 // else keep the current direction for resuming in same direction when new requests arrive
             }
-            CabinState::Between { .. } => state.get_direction(),
+            CabinState::Between { .. } => { self.last_direction = state.get_direction() },
             _ => {} // else keep the current direction
         }
         self.state = state;
