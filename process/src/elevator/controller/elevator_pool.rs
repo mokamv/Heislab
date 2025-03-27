@@ -77,7 +77,7 @@ impl ElevatorPool {
                 self.handle_obstruction(is_obstructed),
 
             Message::ClientCabinState { cabin_state } =>
-                self.handle_cabin_state(identifier, cabin_state),
+                self.handle_cabin_state(identifier, cabin_state, controller_handle),
 
             // TODO
             Message::ClientStopButton { .. } => println!("Unimplemented"),
@@ -120,30 +120,24 @@ impl ElevatorPool {
     fn handle_cabin_state(
         &mut self,
         elevator_id: ConnectionIdentifier,
-        cabin_state: CabinState
+        cabin_state: CabinState,
+        controller_handle: &ControllerHandle
     ) {
         let mut elevator = self.get_elevator_mut(elevator_id);
         elevator.set_state(cabin_state);
-        //TODO
-        // match cabin_state {
-        //     CabinState::DoorOpen { current_floor } => {
-        //         let lights = elevator.complete_request_at_floor(current_floor);
-        //         for light_control in lights {
-        //             light_control.send(&mut self.client_pool)
-        //         }
-        //     }
-        //     CabinState::Idle { .. } => {
-        //         let next_command = elevator.get_next_command();
-        //         if let Some(next_command) = next_command {
-        //             self.client_pool.send(
-        //                 Target::Specific(identifier),
-        //                 next_command
-        //             ).unwrap()
-        //         }
-        //     }
-        //     CabinState::Between { .. } => {}
-        //     CabinState::Init => {}
-        // }
+
+        match cabin_state {
+            CabinState::Idle { .. } => {
+                let next_command = elevator.get_next_command();
+                if let Some(next_command) = next_command {
+                    controller_handle.send_client_message(
+                        Target::Specific(self.identifier),
+                        Message::GotoFloor { go_to_floor: next_command.unwrap() }
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 
     pub(super) fn get_merged_hall_requests(&self) -> [[bool; 2]; N_FLOOR as usize] {
