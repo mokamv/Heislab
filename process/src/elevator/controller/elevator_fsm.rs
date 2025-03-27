@@ -97,11 +97,11 @@ impl ElevatorState {
 impl ElevatorState {
     // Request functions:
     pub fn requests_above(&self, floor: u8) -> bool {
-        if floor as usize >= N_FLOOR as u8 -1{
+        if floor as usize >= N_FLOOR -1{
             return false;
         }
 
-        for f in floor as usize + 1..N_FLOOR as u8 {
+        for f in floor as usize + 1..N_FLOOR {
             for btn in 0..N_BTN {
                 if self.request_matrix[f][btn] {
                     return true;
@@ -306,7 +306,7 @@ impl ElevatorState {
             
             MotorDirection::Up => {
                 // Check for requests above current floor
-                for floor in current_floor + 1..N_FLOOR {
+                for floor in current_floor + 1..N_FLOOR as u8 {
                     if self.requests_at_current_floor(floor) {
                         return Some(floor);
                     }
@@ -331,7 +331,7 @@ impl ElevatorState {
                 }
                 // If no requests below, check above (change direction)
                 if self.requests_above(current_floor) {
-                    for floor in current_floor + 1..N_FLOOR {
+                    for floor in current_floor + 1..N_FLOOR as u8 {
                         if self.requests_at_current_floor(floor) {
                             return Some(floor);
                         }
