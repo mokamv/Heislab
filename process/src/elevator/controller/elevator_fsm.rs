@@ -145,7 +145,7 @@ impl ElevatorState {
         let current_floor = self.state.get_last_seen_floor();
         let direction = self.last_direction;
 
-        if self.request_matrix[current_floor as usize][2] {
+        if self.request_matrix[current_floor as usize][CAB_IDX] {
             return true;
         }
 
