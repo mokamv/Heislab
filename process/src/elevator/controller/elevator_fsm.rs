@@ -41,37 +41,6 @@ impl ElevatorState {
 
     }
 
-    // Light control methods
-
-    pub fn set_all_lights(&self, controller_handle: &ControllerHandle) {
-        for f in 0..N_FLOOR as u8 {
-            for btn in 0..N_BTN {
-                let request = match btn {
-                    0 => CallRequest::Hall {
-                        floor: f as u8,
-                        direction: MotorDirection::Up
-                    },
-                    1 => CallRequest::Hall {
-                        floor: f as u8,
-                        direction: MotorDirection::Down
-                    },
-                    2 => CallRequest::Cab {
-                        floor: f as u8
-                    },
-                    _ => unreachable!()
-                };
-
-                controller_handle.send_client_message(
-                    Target::Specific(self.identifier),
-                    Message::LightControl {
-                        button: request,
-                        is_lit: self.request_matrix[f as usize][btn]
-                    }
-                );
-            }
-        }
-    }
-
 
     //TODO
     // pub fn on_init_floor_arrival(&self, floor: u8) -> Self {
@@ -303,6 +272,10 @@ impl ElevatorState {
     }
 
     pub fn get_next_command(&self) -> Option<u8> {
+        if self.state.is_init() {
+            return None;
+        }
+
         let current_floor = self.state.get_last_seen_floor();
 
         if self.requests_at_current_floor(current_floor) {
