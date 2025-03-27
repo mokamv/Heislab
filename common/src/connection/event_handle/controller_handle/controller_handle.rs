@@ -1,10 +1,10 @@
+use crate::config::CLIENT_COUNT;
 use crate::connection::event_handle::controller_handle::controller_handle_epoll_channels::ControllerHandleEpollChannels;
 use crate::connection::event_handle::controller_handle::controller_handle_pool_channels::ControllerHandlePoolChannels;
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState};
-use crossbeam_channel::{unbounded, Receiver, Sender};
-use std::collections::HashSet;
 use crate::data_structures::controller_state::ControllerState;
 use crate::data_structures::network::message::{Message, TimedMessage};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 
 #[derive(Debug, Copy, Clone)]
 pub enum Target {
@@ -38,6 +38,12 @@ pub(in super::super) struct ControllerHandleBuilder {
 
 impl ControllerHandleBuilder {
     pub(in super::super) fn new(configuration: ControllerHandleConfiguration) -> Self {
+        debug_assert_eq!(configuration.clients_ids.len(), CLIENT_COUNT);
+        let clients_ids: [ConnectionIdentifier; CLIENT_COUNT] = configuration
+            .clients_ids
+            .try_into()
+            .unwrap();
+
         let (handle_state_sender, handle_state_receiver) = unbounded();
         let (controller_state_sender, controller_state_receiver) = unbounded();
 
@@ -51,7 +57,7 @@ impl ControllerHandleBuilder {
             pool_channels: Some(
                 ControllerHandlePoolChannels::new(
                     configuration.controller_id,
-                    configuration.client_ids.clone(),
+                    clients_ids,
                     handle_state_receiver,
                     controller_state_receiver,
                     from_epoll_to_pool,
@@ -63,16 +69,13 @@ impl ControllerHandleBuilder {
             epoll_channels: Some(
                 ControllerHandleEpollChannels::new(
                     configuration.controller_id,
-                    configuration.client_ids.clone(),
+                    clients_ids,
                     handle_state_sender,
                     to_pool_from_epoll
                 )
             ),
             handle: ControllerHandle {
-                clients_id: configuration
-                    .client_ids
-                    .into_iter()
-                    .collect(),
+                clients_ids,
                 from_client_pool_to_handle,
                 from_sync_to_handle,
                 to_pool_from_handle,
@@ -97,30 +100,31 @@ impl ControllerHandleBuilder {
 }
 
 pub struct ControllerHandleConfiguration {
-    client_ids: HashSet<ConnectionIdentifier>,
+    clients_ids: Vec<ConnectionIdentifier>,
     controller_id: ConnectionIdentifier
 }
 
 impl ControllerHandleConfiguration {
     pub fn new(controller_id: ConnectionIdentifier) -> Self {
         Self {
-            client_ids: Default::default(),
+            clients_ids: Default::default(),
             controller_id,
         }
     }
 
     pub fn add_client(&mut self, client_id: ConnectionIdentifier) -> &mut Self {
-        let inserted = self.client_ids.insert(client_id);
-        if ! inserted {
+        if self.clients_ids.contains(&client_id) {
             panic!("Cannot use the same id twice")
         }
+
+        self.clients_ids.push(client_id);
         self
     }
 }
 
 pub struct ControllerHandle {
     // Store ids of every possible clients
-    clients_id: Vec<ConnectionIdentifier>,
+    clients_ids: [ConnectionIdentifier; CLIENT_COUNT],
 
     // Receive messages from both the other controller(sync) and the connected clients
     from_client_pool_to_handle: Receiver<ClientMessage>,
@@ -136,7 +140,7 @@ pub struct ControllerHandle {
 
 impl ControllerHandle {
     pub fn clients_id(&self) -> &[ConnectionIdentifier] {
-        &self.clients_id[..]
+        &self.clients_ids[..]
     }
 
     pub fn recv_sync_message(&self) -> &Receiver<Message> {

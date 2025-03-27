@@ -193,7 +193,26 @@ impl ControllerSync {
         full_matrix: FullControllerRequestsMatrix
     ) {
         match self.controller_state {
-            Backup => { /*TODO HANDLE STATE REPLACE*/ }
+            Backup => {
+                // TODO COMMENT
+                elevator_pool.pool[0]
+                    .replace_request_matrix(
+                        full_matrix.get_requests_matrix_of(0)
+                    );
+
+                // TODO COMMENT
+                if CLIENT_COUNT > 1 {
+                    elevator_pool.pool[1..]
+                        .iter_mut()
+                        .for_each(|elevator_state| {
+                            elevator_state.replace_cab_requests(
+                                full_matrix.get_cab_requests_of(
+                                    elevator_state.identifier()
+                                )
+                            )
+                        })
+                }
+            }
             // Stepping down state shouldn't be replaced.
             MasterSteppingDown => {}
             // Master state cannot be replaced.

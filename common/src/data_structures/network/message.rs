@@ -66,7 +66,8 @@ pub enum Message {
     ControllerSyncReplace { full_matrix: FullControllerRequestsMatrix },
     ControllerSyncMerge { full_matrix: FullControllerRequestsMatrix },
     ControllerSyncFinish,
-
+    
+    //TODO SYNC ADD & CLEAR REQ
 }
 
 impl Message {

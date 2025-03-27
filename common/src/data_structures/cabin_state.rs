@@ -1,47 +1,59 @@
 use std::cmp::Ordering;
 use driver_rust::elevio::elev::MotorDirection;
 use driver_rust::elevio::elev::MotorDirection::Up;
+use crate::config::N_FLOOR;
 use crate::data_structures::cabin_state::CabinState::{Between, DoorOpen, Idle, Init};
 
+/// Represents the current state of the elevator cabin
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CabinState {
+    /// Initialization state of the cabin, used to indicate the lack of information.
+    /// This state is temporary and should be replaced by either [Idle] or [Between] less than 50ms after
+    /// connection to the hardware is achieved.
     Init,
+    /// Cabin is idle, i.e. not moving, with its doors closed, waiting for the next task.
     Idle { current_floor: u8 },
-    Between { from_floor: u8, to_floor: u8 }, // Moving between to floors
+    /// Cabin is between two adjacent floors.
+    /// It's possible to deduce the direction it is going from this state.
+    /// This cabin can be immobile in this state.
+    Between { from_floor: u8, to_floor: u8 },
+    /// Cabin is not moving, staying at a floor, with its door open.
+    /// This state is temporary if obstruction is set to false, else it's indefinitely open until obstruction is set to false.
     DoorOpen { current_floor: u8 },
 }
 
 impl Default for CabinState { // is this used?
+    /// Default state of the cabin, i.e. [Init]
     fn default() -> Self {
         Init
     }
 }
 
 impl CabinState {
-    pub fn is_between(&self) -> bool {
-        if let Between { .. } = *self {
-            true
-        } else { false }
-    }
-
+    // TODO MIGHT REMOVE
+    /// Returns true if the cabin state is currently [DoorOpen], false otherwise.
+    /// This can be used to avoid pattern-matching when not required
     pub fn is_door_open(&self) -> bool {
         if let DoorOpen { .. } = *self {
             true
         } else { false }
     }
 
-    pub fn is_idle(&self) -> bool {
-        if let Idle { .. } = *self {
-            true
-        } else { false }
-    }
-
+    /// Returns true if the cabin state is currently [Init], false otherwise.
+    /// This can be used to avoid pattern-matching when not required
     pub fn is_init(&self) -> bool {
         if let Init = *self {
             true
         } else { false }
     }
 
+    /// Increments the values inside the [Between] state. The increment is positive if [get_direction](CabinState::get_direction) is
+    /// [Up] and negative if [Down].
+    ///
+    /// This function fails if the state of [self] is not [Between]
+    ///
+    /// Exemple: ``Between { 0, 1 }`` is going from 0 to 1, i.e. going up, so increment will result in
+    /// ``Between { 1, 2 }``
     pub fn increment_between(&mut self) {
         let Between { from_floor, to_floor } = *self else { unreachable!() };
 
@@ -52,6 +64,7 @@ impl CabinState {
         }
     }
 
+    ///
     pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
         match self.get_current_floor_relative_to(to).cmp(&to) {
             Ordering::Less => Up,
@@ -60,7 +73,17 @@ impl CabinState {
         }
     }
 
+    /// This function compute the floor, the cabin would have departed from if it was idling.
+    ///
+    /// For [Idle] and [DoorOpen] the result is obviously the stored floor.
+    /// For [Between], the result is the from value it would have when moving in the right direction to the [target]
+    ///
+    /// To be more precise, if [Between] is already going in the right direction to reach target, then the value
+    /// of the `from_floor` field is used, else, between is reversed and we take the new from field, i.e. the old `to_floor` field.
+    ///
+    /// This function is not available when [self] is [Init].
     pub fn get_current_floor_relative_to(&self, target: u8) -> u8 {
+        debug_assert!(target < N_FLOOR);
         match self {
             Idle { current_floor }
             | DoorOpen { current_floor } => *current_floor,
@@ -78,6 +101,11 @@ impl CabinState {
         }
     }
 
+    /// Get the last floor the cabin has been on.
+    /// For [DoorOpen] and [Idle], it is the value of the `current_floor` field.
+    /// For [Between], it is the value of the `from_floor` field.
+    ///
+    /// This function is not available when [self] is [Init].
     pub fn get_last_seen_floor(&self) -> u8 {
         match *self {
             DoorOpen { current_floor }
@@ -87,6 +115,7 @@ impl CabinState {
         }
     }
 
+    /// Compute the direction required to go from the first floor argument to the second floor argument.
     pub fn get_direction_from_to(from: u8, to: u8) -> MotorDirection {
         match from.cmp(&to) {
             Ordering::Less => Up,
@@ -95,15 +124,20 @@ impl CabinState {
         }
     }
 
+    /// Get the current direction of the cabin.
+    /// For [DoorOpen], [Idle] and [Init], return [Stop]
+    /// For [Between], return the value computed by [CabinState::get_direction_from_to] with [Between]
+    /// fields as arguments
     pub fn get_direction(&self) -> MotorDirection {
         match *self {
+            //TODO CHECK UNREACHABLE INIT
             CabinState::Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor),
             CabinState::Init => MotorDirection::Down,
             _ => MotorDirection::Stop,
-
         }
     }
 
+    /// Convert the [CabinState] into a raw bytes array to use in network related code.
     pub(crate) fn encode(&self) -> [u8; 3] {
         let mut message = [0u8; 3];
         match *self {
@@ -127,6 +161,7 @@ impl CabinState {
         message
     }
 
+    /// Reciprocal function to [encode](CabinState::encode)
     pub(super) fn decode(raw_cabin_state: &[u8]) -> Self {
         assert_eq!(raw_cabin_state.len(), 3);
         match raw_cabin_state[0] {
@@ -137,5 +172,4 @@ impl CabinState {
             _ => unreachable!()
         }
     }
-
 }

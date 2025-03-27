@@ -183,7 +183,7 @@ impl ElevatorState {
             is_connected: false,
             is_obstructed: false,
             last_direction: MotorDirection::Stop,
-            state: CabinState::default(),
+            state: Default::default(),
             request_matrix: [[false; N_BUTTONS]; N_FLOOR as usize]
         }
     }
@@ -230,10 +230,6 @@ impl ElevatorState {
 
     pub fn is_connected(&self) -> bool {
         self.is_connected
-    }
-
-    pub fn can_receive(&self) -> bool {
-        !self.state.is_door_open()
     }
 
     pub fn add_request(&mut self, request: CallRequest) {
@@ -292,12 +288,22 @@ impl ElevatorState {
             .unwrap()
     }
 
+    pub fn replace_cab_requests(&mut self, cab_requests: [bool; N_FLOOR as usize]) {
+        self.request_matrix
+            .iter_mut()
+            .enumerate()
+            .for_each(|(floor, floor_array)| {
+                floor_array[2] = cab_requests[floor]
+            })
+    }
+
     pub fn merge_cab_requests(&mut self, cab_requests: [bool; N_FLOOR as usize]) {
-        for (floor, value) in cab_requests.into_iter().enumerate() {
-            self.request_matrix
-                .get_mut(floor)
-                .unwrap()[CAB_IDX].bitor_assign(value);
-        }
+        self.request_matrix
+            .iter_mut()
+            .enumerate()
+            .for_each(|(floor, floor_array)| {
+                floor_array[2].bitor_assign(cab_requests[floor])
+            });
     }
 
     pub fn merge_request_matrix(&mut self, request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize]) {

@@ -1,14 +1,21 @@
-use driver_rust::elevio::elev::{CallType, MotorDirection};
-use driver_rust::elevio::elev::MotorDirection::Up;
 use crate::data_structures::call_request::CallRequest::{Cab, Hall};
+use driver_rust::elevio;
+use driver_rust::elevio::elev::MotorDirection::Up;
+use driver_rust::elevio::elev::{CallType, MotorDirection};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+/// Represent a call request, i.e. a press of a call button by a person.
 pub enum CallRequest {
+    /// Hall request, this materializes a person pressing a button in the Hall by the floor 
+    /// pressed and the direction of the button
     Hall { floor: u8, direction: MotorDirection },
+    /// Hall request, this materializes a person pressing a button inside the cabin by the floor pressed
     Cab { floor: u8 }
 }
 
 impl Into<CallType> for CallRequest {
+    /// Convert a [CallRequest] to the type [elevio::elev::CallType] used inside the rust-driver.
+    /// This function is used to send message to the hardware without struggle.
     fn into(self) -> CallType {
         match self {
             Cab { .. } => CallType::Cab,
@@ -22,6 +29,7 @@ impl Into<CallType> for CallRequest {
 }
 
 impl CallRequest {
+    /// Convert the [CallRequest] into a raw bytes array to use in network related code.
     pub(crate) fn encode(&self) -> [u8; 3] {
         let mut message = [0u8; 3];
         match self {
@@ -39,6 +47,7 @@ impl CallRequest {
         message
     }
 
+    /// Reciprocal function to [encode](CallRequest::encode)
     pub(super) fn decode(raw_button: &[u8]) -> Self {
         assert_eq!(raw_button.len(), 3);
         match raw_button[0] {

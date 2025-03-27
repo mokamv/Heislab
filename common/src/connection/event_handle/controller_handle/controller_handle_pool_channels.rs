@@ -1,3 +1,4 @@
+use crate::config::CLIENT_COUNT;
 use crate::connection::event_handle::controller_handle::controller_handle::{ClientMessage, ControllerHandleState, SentControllerMessage, Target};
 use crate::connection::event_handle::handle_state::HandleState::{Connected, Disconnected};
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState, HANDLE_ACK_UNINIT, HANDLE_HASH_UNINIT};
@@ -10,7 +11,7 @@ use crate::data_structures::network::message::Message::{Ack, KeepAlive};
 use crate::data_structures::network::payload::{NetworkPayload, NetworkPayloadNode, TimedPayload};
 use crossbeam_channel::{tick, Receiver, Sender};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::ops::{Deref, DerefMut};
 use std::time::Instant;
@@ -48,7 +49,7 @@ pub(in super::super) struct ControllerHandlePoolChannels {
 impl ControllerHandlePoolChannels {
     pub(in super) fn new(
         controller_id: ConnectionIdentifier,
-        client_ids: HashSet<ConnectionIdentifier>,
+        client_ids: [ConnectionIdentifier; CLIENT_COUNT],
         handle_state_receiver: Receiver<ControllerHandleState>,
         controller_state_receiver: Receiver<ControllerState>,
         from_epoll_to_pool: Receiver<TimedPayload>,

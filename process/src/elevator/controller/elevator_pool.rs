@@ -212,10 +212,10 @@ impl ElevatorPool {
             })
     }
 
-    pub(super) fn get_clients_call_requests(&self) -> [[bool; CLIENT_COUNT as usize]; N_FLOOR as usize] {
-        let mut clients_cab_requests = [[false; CLIENT_COUNT as usize]; N_FLOOR as usize];
+    pub(super) fn get_clients_call_requests(&self) -> [[bool; CLIENT_COUNT]; N_FLOOR as usize] {
+        let mut clients_cab_requests = [[false; CLIENT_COUNT]; N_FLOOR as usize];
 
-        let raw_cab_requests: [bool; (N_FLOOR * CLIENT_COUNT) as usize] = self.pool
+        let raw_cab_requests: [bool; N_FLOOR as usize * CLIENT_COUNT] = self.pool
             .iter()
             .map(|elevator_state| elevator_state.get_cab_requests())
             .flatten()

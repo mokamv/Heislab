@@ -1,12 +1,13 @@
+use crate::config::CLIENT_COUNT;
 use crate::connection::event_handle::controller_handle::controller_handle::ControllerHandleState;
 use crate::connection::event_handle::handle_state::{ConnectionIdentifier, HandleState, HANDLE_ACK_UNINIT, HANDLE_HASH_UNINIT};
-use crossbeam_channel::Sender;
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
-use std::time::Instant;
 use crate::constants::UDP_TIMEOUT;
 use crate::data_structures::network::payload::TimedPayload;
+use crossbeam_channel::Sender;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::time::Instant;
 
 pub(in super::super::super) struct ControllerHandleEpollChannels {
     controller_id: ConnectionIdentifier,
@@ -23,7 +24,7 @@ pub(in super::super::super) struct ControllerHandleEpollChannels {
 impl ControllerHandleEpollChannels {
     pub(in super) fn new(
         controller_id: ConnectionIdentifier,
-        client_ids: HashSet<ConnectionIdentifier>,
+        clients_ids: [ConnectionIdentifier; CLIENT_COUNT],
         handle_state_sender: Sender<ControllerHandleState>,
         to_pool_from_epoll: Sender<TimedPayload>
     ) -> Self {
@@ -33,7 +34,7 @@ impl ControllerHandleEpollChannels {
             controller_id,
             sync_state: RefCell::new(Default::default()),
             clients_state: RefCell::new(
-                client_ids
+                clients_ids
                     .into_iter()
                     .map(|client_id| (
                         client_id,
