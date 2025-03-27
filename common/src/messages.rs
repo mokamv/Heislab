@@ -6,7 +6,7 @@ use Message::{ClientStopButton, ControllerSyncFinish, ControllerSyncMerge, Contr
 use crate::config::N_FLOOR;
 use crate::connection::event_handle::handle_state::ConnectionIdentifier;
 use crate::messages::Message::{Connected, ClientButtonCall, ClientObstructed, ClientCabinState, ControllerAddress, ControllerSyncState, GotoFloor, KeepAlive, LightControl, Ack, ClientSyncCab, FullCallLightControl};
-use crate::data_struct::{CabinState, CallLightArray, CallRequest, ControllerState};
+use crate::data_struct::{CabinState, CallLightArray, CallRequest, ControllerState, FullControllerRequestsMatrix, FCRM_RAW_SIZE};
 use crate::data_struct::CallRequest::{Cab, Hall};
 
 const RAW_PAYLOAD_HEADER_SIZE: usize = 2 + 2 + size_of::<usize>() + size_of::<usize>();
@@ -256,16 +256,8 @@ pub enum Message {
     // Synchronisation messages
     ControllerSyncState { controller_id: ConnectionIdentifier, controller_state: ControllerState },
     // TODO NOT HARD CODED FOR 3 CLIENTS AND 4 FLOORS WITH ID 0,1,2
-    ControllerSyncReplace {
-        client0: [[bool; 3]; 4], // hall up, hall down, cab
-        client1: [[bool; 3]; 4],
-        client2: [[bool; 3]; 4]
-    },
-    ControllerSyncMerge {
-        client0: [[bool; 3]; 4], // hall up, hall down, cab
-        client1: [[bool; 3]; 4],
-        client2: [[bool; 3]; 4]
-    },
+    ControllerSyncReplace { full_matrix: FullControllerRequestsMatrix },
+    ControllerSyncMerge { full_matrix: FullControllerRequestsMatrix },
     ControllerSyncFinish,
 
 }
@@ -359,55 +351,13 @@ impl Message {
             },
 
             // TODO THIS SUCKS
-            ControllerSyncReplace {
-                client0, client1, client2
-            } => {
+            ControllerSyncReplace { full_matrix } => {
                 raw_message[0] = 194;
-                //client0
-                raw_message[1] = client0[0][0] as u8; // Going up, floor 0
-                raw_message[2] = client0[0][2] as u8; // Cab, floor 0
-                raw_message[3..6].copy_from_slice(&client0[1][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); //floor 1
-                raw_message[6..9].copy_from_slice(&client0[2][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 2
-                raw_message[9..11].copy_from_slice(&client0[3][1..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 3, going down && cab
-
-                //client1
-                raw_message[11] = client1[0][0] as u8; // Going up, floor 0
-                raw_message[12] = client1[0][2] as u8; // Cab, floor 0
-                raw_message[13..16].copy_from_slice(&client1[1][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); //floor 1
-                raw_message[16..19].copy_from_slice(&client1[2][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 2
-                raw_message[19..21].copy_from_slice(&client1[3][1..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 3, going down && cab
-
-                //client2
-                raw_message[21] = client2[0][0] as u8; // Going up, floor 0
-                raw_message[22] = client2[0][2] as u8; // Cab, floor 0
-                raw_message[23..26].copy_from_slice(&client2[1][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); //floor 1
-                raw_message[26..29].copy_from_slice(&client2[2][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 2
-                raw_message[29..31].copy_from_slice(&client2[3][1..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 3, going down && cab
+                raw_message[1..1 + FCRM_RAW_SIZE].copy_from_slice(&full_matrix.encode());
             }
-            ControllerSyncMerge {
-                client0, client1, client2
-            } => {
+            ControllerSyncMerge { full_matrix } => {
                 raw_message[0] = 195;
-                //client0
-                raw_message[1] = client0[0][0] as u8; // Going up, floor 0
-                raw_message[2] = client0[0][2] as u8; // Cab, floor 0
-                raw_message[3..6].copy_from_slice(&client0[1][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); //floor 1
-                raw_message[6..9].copy_from_slice(&client0[2][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 2
-                raw_message[9..11].copy_from_slice(&client0[3][1..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 3, going down && cab
-
-                //client1
-                raw_message[11] = client1[0][0] as u8; // Going up, floor 0
-                raw_message[12] = client1[0][2] as u8; // Cab, floor 0
-                raw_message[13..16].copy_from_slice(&client1[1][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); //floor 1
-                raw_message[16..19].copy_from_slice(&client1[2][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 2
-                raw_message[19..21].copy_from_slice(&client1[3][1..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 3, going down && cab
-
-                //client2
-                raw_message[21] = client2[0][0] as u8; // Going up, floor 0
-                raw_message[22] = client2[0][2] as u8; // Cab, floor 0
-                raw_message[23..26].copy_from_slice(&client2[1][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); //floor 1
-                raw_message[26..29].copy_from_slice(&client2[2][0..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 2
-                raw_message[29..31].copy_from_slice(&client2[3][1..3].iter().map(|x| *x as u8).collect::<Vec<u8>>()); // floor 3, going down && cab
+                raw_message[1..1 + FCRM_RAW_SIZE].copy_from_slice(&full_matrix.encode());
             }
             ControllerSyncFinish => {
                 raw_message[0] = 196
@@ -466,62 +416,16 @@ impl Message {
                 controller_state: raw_message[2].into(),
             },
             194 => {
-                let mut client0 = [[false; 3]; 4];
-                client0[0][0] = raw_message[1] != 0; // Going up, floor 0
-                client0[0][2] = raw_message[2] != 0; // Cab, floor 0
-                client0[1][0..3].copy_from_slice(&raw_message[3..6].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 1
-                client0[2][0..3].copy_from_slice(&raw_message[6..9].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 2
-                client0[3][1..3].copy_from_slice(&raw_message[9..11].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 3, going down && cab
-
-
-                let mut client1 = [[false; 3]; 4];
-                client1[0][0] = raw_message[11] != 0; // Going up, floor 0
-                client1[0][2] = raw_message[12] != 0; // Cab, floor 0
-                client1[1][0..3].copy_from_slice(&raw_message[13..16].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 1
-                client1[2][0..3].copy_from_slice(&raw_message[16..19].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 2
-                client1[3][1..3].copy_from_slice(&raw_message[19..21].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 3, going down && cab
-
-                let mut client2 = [[false; 3]; 4];
-                client2[0][0] = raw_message[21] != 0; // Going up, floor 0
-                client2[0][2] = raw_message[22] != 0; // Cab, floor 0
-                client2[1][0..3].copy_from_slice(&raw_message[23..26].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 1
-                client2[2][0..3].copy_from_slice(&raw_message[26..29].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 2
-                client2[3][1..3].copy_from_slice(&raw_message[29..31].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 3, going down && cab
-
-                ControllerSyncReplace {
-                    client0,
-                    client1,
-                    client2,
-                }
+                let full_matrix = FullControllerRequestsMatrix::decode(
+                    &raw_message[1..1+FCRM_RAW_SIZE]
+                );
+                ControllerSyncReplace { full_matrix }
             },
             195 => {
-                let mut client0 = [[false; 3]; 4];
-                client0[0][0] = raw_message[1] != 0; // Going up, floor 0
-                client0[0][2] = raw_message[2] != 0; // Cab, floor 0
-                client0[1][0..3].copy_from_slice(&raw_message[3..6].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 1
-                client0[2][0..3].copy_from_slice(&raw_message[6..9].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 2
-                client0[3][1..3].copy_from_slice(&raw_message[9..11].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 3, going down && cab
-
-
-                let mut client1 = [[false; 3]; 4];
-                client1[0][0] = raw_message[11] != 0; // Going up, floor 0
-                client1[0][2] = raw_message[12] != 0; // Cab, floor 0
-                client1[1][0..3].copy_from_slice(&raw_message[13..16].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 1
-                client1[2][0..3].copy_from_slice(&raw_message[16..19].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 2
-                client1[3][1..3].copy_from_slice(&raw_message[19..21].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 3, going down && cab
-
-                let mut client2 = [[false; 3]; 4];
-                client2[0][0] = raw_message[21] != 0; // Going up, floor 0
-                client2[0][2] = raw_message[22] != 0; // Cab, floor 0
-                client2[1][0..3].copy_from_slice(&raw_message[23..26].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 1
-                client2[2][0..3].copy_from_slice(&raw_message[26..29].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 2
-                client2[3][1..3].copy_from_slice(&raw_message[29..31].iter().map(|x| *x != 0).collect::<Vec<bool>>()); // floor 3, going down && cab
-
-                ControllerSyncMerge {
-                    client0,
-                    client1,
-                    client2,
-                }
+                let full_matrix = FullControllerRequestsMatrix::decode(
+                    &raw_message[1..1+FCRM_RAW_SIZE]
+                );
+                ControllerSyncMerge { full_matrix }
             },
             196 => ControllerSyncFinish,
 

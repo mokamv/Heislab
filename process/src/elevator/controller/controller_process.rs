@@ -4,7 +4,6 @@ use common::connection::event_handle::controller_handle::controller_handle::Cont
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use crossbeam_channel::select;
 use std::thread::{Builder, JoinHandle};
-use std::time::Duration;
 
 pub fn start_controller_process_thread(
     controller_handle: Option<ControllerHandle>,
@@ -13,7 +12,7 @@ pub fn start_controller_process_thread(
     let builder = Builder::new().name("Controller".to_string());
     if controller_handle.is_none() { return builder.spawn(|| {}).unwrap() };
 
-    let mut controller_handle = controller_handle.unwrap();
+    let controller_handle = controller_handle.unwrap();
     let mut controller_sync = ControllerSync::new(controller_id);
     let mut elevator_pool = ElevatorPool::from(
         controller_handle.clients_id()
@@ -32,6 +31,7 @@ pub fn start_controller_process_thread(
                 recv(controller_handle.recv_sync_message()) -> message => {
                     let message = message.unwrap();
                     controller_sync.handle_sync_message(
+                        &elevator_pool,
                         &controller_handle,
                         message
                     );

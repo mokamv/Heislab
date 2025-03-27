@@ -1,23 +1,27 @@
 use crate::elevator::controller::controller_sync::ControllerSync;
 use crate::elevator::controller::elevator_fsm::ElevatorState;
 use crate::elevator::controller::requests_assigner::execute_hall_request_assigner;
-use common::config::N_FLOOR;
+use common::config::{CLIENT_COUNT, N_FLOOR};
 use common::connection::event_handle::controller_handle::controller_handle::{ControllerHandle, Target};
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use common::data_struct::{CabinState, CallLightArray, CallRequest};
+use common::data_struct::{CabinState, CallLightArray, CallRequest, FullControllerRequestsMatrix};
 use common::messages::Message;
 use std::ops::BitOrAssign;
 
 pub struct ElevatorPool {
-    pub(super) pool: Vec<ElevatorState>
+    pub(super) pool: [ElevatorState; CLIENT_COUNT as usize]
 }
 
 impl ElevatorPool {
     pub fn from(client_identifiers: &[ConnectionIdentifier]) -> Self {
-        let mut elevators = vec![];
-        client_identifiers.into_iter().for_each(|elevator_id| {
-            elevators.push(ElevatorState::from(*elevator_id))
-        });
+        let elevators = client_identifiers
+            .into_iter()
+            .map(|elevator_id| {
+                ElevatorState::from(*elevator_id)
+            })
+            .collect::<Vec<ElevatorState>>()
+            .try_into()
+            .unwrap();
 
         Self {
             pool: elevators
@@ -32,7 +36,7 @@ impl ElevatorPool {
         self.pool.iter().find(|candidate| candidate.identifier() == elevator_id).unwrap()
     }
 
-    pub fn handle_elevator_message(
+    pub(super) fn handle_elevator_message(
         &mut self,
         controller_sync: &ControllerSync,
         controller_handle: &ControllerHandle,
@@ -122,7 +126,7 @@ impl ElevatorPool {
         elevator_id: ConnectionIdentifier,
         cabin_state: CabinState
     ) {
-        let mut elevator = self.get_elevator_mut(elevator_id);
+        let elevator = self.get_elevator_mut(elevator_id);
         elevator.set_state(cabin_state);
         //TODO
         // match cabin_state {
@@ -158,6 +162,39 @@ impl ElevatorPool {
                 }
                 acc
             })
+    }
+
+    pub(super) fn get_clients_call_requests(&self) -> [[bool; CLIENT_COUNT as usize]; N_FLOOR as usize] {
+        let mut clients_cab_requests = [[false; CLIENT_COUNT as usize]; N_FLOOR as usize];
+
+        let raw_cab_requests: [bool; (N_FLOOR * CLIENT_COUNT) as usize] = self.pool
+            .iter()
+            .map(|elevator_state| elevator_state.get_cab_requests())
+            .flatten()
+            .collect::<Vec<bool>>()
+            .try_into()
+            .unwrap();
+
+        clients_cab_requests.iter_mut()
+            .enumerate()
+            .for_each(|(floor_idx, floor_array)| {
+                floor_array.iter_mut()
+                    .enumerate()
+                    .for_each(|(client_idx, client_floor_value)| {
+                        *client_floor_value = raw_cab_requests[client_idx * N_FLOOR as usize + floor_idx];
+                    })
+            });
+        clients_cab_requests
+    }
+
+    pub(super) fn get_full_requests_matrix(&self) -> FullControllerRequestsMatrix {
+        let merged_hall_requests = self.get_merged_hall_requests();
+        let clients_cab_requests = self.get_clients_call_requests();
+
+        FullControllerRequestsMatrix::from(
+            merged_hall_requests,
+            clients_cab_requests
+        )
     }
 
     fn get_call_lights_state_for(&self, elevator_id: ConnectionIdentifier) -> [[bool; 3]; N_FLOOR as usize] {

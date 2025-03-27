@@ -48,7 +48,11 @@ impl ElevatorHardwareState {
 impl ElevatorHardwareState {
     pub fn set_new_target(&mut self, target: u8) -> CabinState {
         match self.state.cabin {
-            CabinState::DoorOpen { .. } => unreachable!("Go to floor cannot be called while doors are opened"),
+            CabinState::DoorOpen { .. } => {
+                println!("Go to floor cannot be called while doors are opened");
+                return self.state.cabin
+                // unreachable!("Go to floor cannot be called while doors are opened")
+            },
             CabinState::Idle { .. }
             | CabinState::Between { .. } => {
                 self.state.target = Some(target);

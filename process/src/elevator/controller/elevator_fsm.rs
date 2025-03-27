@@ -1,14 +1,11 @@
-use std::ops::{BitAndAssign, BitOrAssign};
-use std::time::Instant;
-use common::connection::event_handle::controller_handle;
+use common::config::N_FLOOR;
 use common::connection::event_handle::controller_handle::controller_handle::ControllerHandle;
+use common::connection::event_handle::controller_handle::controller_handle::Target;
+use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
 use driver_rust::elevio::elev::MotorDirection;
-use std::vec;
-use common::config::N_FLOOR;
-use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use common::connection::event_handle::controller_handle::controller_handle::Target;
+use std::ops::BitOrAssign;
 
 const N_BTN: usize = 3; //TODO: Move to config file
 
@@ -16,6 +13,7 @@ const HALL_UP_IDX: usize = 0; //TODO: Use these?
 const HALL_DOWN_IDX: usize = 1;
 const CAB_IDX: usize = 2;
 
+#[derive(Debug)]
 pub struct ElevatorState {
     identifier: ConnectionIdentifier,
     is_connected: bool,

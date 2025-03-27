@@ -1,13 +1,13 @@
+use crate::elevator::controller::elevator_pool::ElevatorPool;
+use common::config::DELAY_TO_BECOME_MASTER;
 use common::connection::event_handle::controller_handle::controller_handle::ControllerHandle;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::data_struct::ControllerState;
 use common::data_struct::ControllerState::MasterSteppingDown;
 use common::messages::Message;
 use crossbeam_channel::{after, never, Receiver};
-use std::time::{Duration, Instant};
-use common::config::{CLIENT_COUNT, DELAY_TO_BECOME_MASTER, N_FLOOR};
+use std::time::Instant;
 use ControllerState::{Backup, Master};
-use crate::elevator::controller::elevator_pool::ElevatorPool;
 
 pub(in super) struct ControllerSync {
     is_connected: bool,
@@ -40,18 +40,16 @@ impl ControllerSync {
             controller_handle,
             Master
         );
-        
+
+        let full_matrix = elevator_pool.get_full_requests_matrix();
         controller_handle.send_sync_message(
-            Message::ControllerSyncReplace {
-                client0: [[false; 3]; 4],
-                client1: [[false; 3]; 4],
-                client2: [[false; 3]; 4],
-            }
+            Message::ControllerSyncReplace { full_matrix }
         )
     }
 
     pub(in super) fn handle_sync_message(
         &mut self,
+        elevator_pool: &ElevatorPool,
         controller_handle: &ControllerHandle,
         message: Message
     ) {
@@ -81,6 +79,7 @@ impl ControllerSync {
                 controller_id: recv_controller_id,
                 controller_state: recv_controller_state
             } => self.handle_controller_state_message(
+                elevator_pool,
                 controller_handle,
                 recv_controller_id,
                 recv_controller_state
@@ -96,6 +95,7 @@ impl ControllerSync {
 
     fn handle_controller_state_message(
         &mut self,
+        elevator_pool: &ElevatorPool,
         controller_handle: &ControllerHandle,
         recv_controller_id: ConnectionIdentifier,
         recv_controller_state: ControllerState
@@ -103,12 +103,9 @@ impl ControllerSync {
         match (self.controller_state, recv_controller_state) {
             // Master and backup get connected, Master send data to replace current backup data.
             (Master, Backup) => {
+                let full_matrix = elevator_pool.get_full_requests_matrix();
                 controller_handle.send_sync_message(
-                    Message::ControllerSyncReplace { //TODO
-                        client0: [[false; 3]; 4],
-                        client1: [[false; 3]; 4],
-                        client2: [[false; 3]; 4],
-                    }
+                    Message::ControllerSyncReplace { full_matrix }
                 )
             }
             // Master will be sending replace data, stop timer to become master
@@ -131,12 +128,9 @@ impl ControllerSync {
                         controller_handle,
                         MasterSteppingDown
                     );
+                    let full_matrix = elevator_pool.get_full_requests_matrix();
                     controller_handle.send_sync_message(
-                        Message::ControllerSyncMerge { //TODO
-                            client0: [[false; 3]; 4],
-                            client1: [[false; 3]; 4],
-                            client2: [[false; 3]; 4],
-                        }
+                        Message::ControllerSyncMerge { full_matrix }
                     )
                 }
             }
@@ -144,12 +138,9 @@ impl ControllerSync {
             // Somehow, other has become master (or got connected) while this controller is stepping down.
             // Send current data to be merged with the new master.
             (MasterSteppingDown, Master) => {
+                let full_matrix = elevator_pool.get_full_requests_matrix();
                 controller_handle.send_sync_message(
-                    Message::ControllerSyncMerge { //TODO
-                        client0: [[false; 3]; 4],
-                        client1: [[false; 3]; 4],
-                        client2: [[false; 3]; 4],
-                    }
+                    Message::ControllerSyncMerge { full_matrix }
                 )
             }
             // Somehow, other has become backup (or got connected) while this controller is stepping down.
@@ -159,12 +150,9 @@ impl ControllerSync {
                     controller_handle,
                     Master
                 );
+                let full_matrix = elevator_pool.get_full_requests_matrix();
                 controller_handle.send_sync_message(
-                    Message::ControllerSyncReplace { //TODO
-                        client0: [[false; 3]; 4],
-                        client1: [[false; 3]; 4],
-                        client2: [[false; 3]; 4],
-                    }
+                    Message::ControllerSyncReplace { full_matrix }
                 )
             }
             // Both controllers are stepping down, this is unusual.
