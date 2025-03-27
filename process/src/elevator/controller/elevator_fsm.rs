@@ -42,7 +42,7 @@ impl ElevatorState {
     // Light control methods
 
     pub fn set_all_lights(&self, controller_handle: &ControllerHandle) {
-        for f in 0..N_FLOOR {
+        for f in 0..N_FLOOR as u8 {
             for btn in 0..N_BTN {
                 let request = match btn {
                     0 => CallRequest::Hall { 
@@ -60,7 +60,7 @@ impl ElevatorState {
                 };
     
                 controller_handle.send_client_message(
-                    Target::Specitic(self.identifier),
+                    Target::Specific(self.identifier),
                     Message::LightControl { 
                         button: request,
                         is_lit: self.request_matrix[f][btn]
@@ -97,11 +97,11 @@ impl ElevatorState {
 impl ElevatorState {
     // Request functions:
     pub fn requests_above(&self, floor: u8) -> bool {
-        if floor as usize >= N_FLOOR-1{
+        if floor as usize >= N_FLOOR as u8 -1{
             return false;
         }
 
-        for f in floor as usize + 1..N_FLOOR {
+        for f in floor as usize + 1..N_FLOOR as u8 {
             for btn in 0..N_BTN {
                 if self.request_matrix[f][btn] {
                     return true;
