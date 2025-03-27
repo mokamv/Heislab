@@ -348,14 +348,15 @@ impl ElevatorState {
 
         match self.last_direction {
             MotorDirection::Stop => {
-                let last_floor = self.state.get_last_seen_floor();
-                let distance: usize = usize::MAX;
+                // Find closest request when stopped
                 let mut closest_floor: Option<u8> = None;
+                let mut min_distance = usize::MAX;
 
                 for floor in 0..N_FLOOR as u8 {
                     if self.requests_at_current_floor(floor) {
-                        let new_distance = (floor as i32 - last_floor as i32).abs() as usize;
-                        if new_distance < distance {
+                        let distance = (floor as i32 - current_floor as i32).abs() as usize;
+                        if distance < min_distance {
+                            min_distance = distance;
                             closest_floor = Some(floor);
                         }
                     }
@@ -363,13 +364,21 @@ impl ElevatorState {
                 closest_floor
             },
             MotorDirection::Up => {
-                // Check for requests above current floor
+                // First check for cab or up requests at current floor
+                if self.request_matrix[current_floor as usize][HALL_UP_IDX] {
+                    return Some(current_floor);
+                }
+
+                // Then look for requests above in current direction
                 for floor in current_floor + 1..N_FLOOR as u8 {
-                    if self.requests_at_current_floor(floor) {
+                    if self.request_matrix[floor as usize][CAB_IDX] || 
+                    self.request_matrix[floor as usize][HALL_UP_IDX] ||
+                    (self.request_matrix[floor as usize][HALL_DOWN_IDX] && !self.requests_above(floor)) {
                         return Some(floor);
                     }
                 }
-                // If no requests above, check below (change direction)
+
+                // If no more requests above, check for requests below
                 if self.requests_below(current_floor) {
                     for floor in (0..current_floor).rev() {
                         if self.requests_at_current_floor(floor) {
@@ -377,17 +386,25 @@ impl ElevatorState {
                         }
                     }
                 }
-                None // No requests
+                None
             },
 
             MotorDirection::Down => {
-                // Check for requests below current floor
+                // First check for cab or down requests at current floor
+                if self.request_matrix[current_floor as usize][HALL_DOWN_IDX] {
+                    return Some(current_floor);
+                }
+
+                // Then look for requests below in current direction
                 for floor in (0..current_floor).rev() {
-                    if self.requests_at_current_floor(floor) {
+                    if self.request_matrix[floor as usize][CAB_IDX] || 
+                    self.request_matrix[floor as usize][HALL_DOWN_IDX] ||
+                    (self.request_matrix[floor as usize][HALL_UP_IDX] && !self.requests_below(floor)) {
                         return Some(floor);
                     }
                 }
-                // If no requests below, check above (change direction)
+
+                // If no more requests below, check for requests above
                 if self.requests_above(current_floor) {
                     for floor in current_floor + 1..N_FLOOR as u8 {
                         if self.requests_at_current_floor(floor) {
