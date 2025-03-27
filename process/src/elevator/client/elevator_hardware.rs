@@ -76,35 +76,72 @@ impl ElevatorHardwareState {
     }
 
     pub fn offline_handle_next_cab_call(&mut self) {
-        // Change call only when idling
-        if !self.state.cabin.is_idle() {
-            return;
+        // Change call only when idling or if on the way to target 
+        match self.state.cabin {
+            CabinState::DoorOpen { .. } => return,
+            CabinState::Idle { current_floor } => self.find_closest_call(current_floor, None),
+            CabinState::Between { from_floor, to_floor } => self.find_closest_call(from_floor, Some(to_floor)),
+            CabinState::Init => return,
         }
-        let current_floor = self
-            .state
-            .cabin
-            .get_last_seen_floor();
+    }
 
-        let next_call: Option<(u8,u8)> = self.state
+    pub fn find_closest_call(&mut self, last_floor: u8, to_floor: Option<u8>) {
+        let motor_direction = self.state.cabin.get_direction();
+
+        //TODO: choose code
+        let next_call: Option<(u8, u8)> = self.state
             .cab_called
             .iter()
             .enumerate()
             .filter_map(|(index, is_called)| {
-                if *is_called {
-                    let target_floor = index as u8;
-                    Some((target_floor, u8::abs_diff(current_floor, target_floor)))
+                let target_floor = index as u8;
+                if *is_called &&
+                    ((motor_direction == MotorDirection::Up && target_floor > last_floor) ||
+                    (motor_direction == MotorDirection::Down && target_floor < last_floor) ||
+                    motor_direction == MotorDirection::Stop) 
+                {
+                    Some((target_floor, u8::abs_diff(last_floor, target_floor)))
                 } else {
                     None
                 }
-            })
-            .min_by(|(_, d1), (_, d2)| {
-                d1.cmp(d2)
-            });
 
+                //SAME code but more readable????????????????
+                // if *is_called {
+                //     let target_floor = index as u8;
+                        
+                //     match motor_direction {
+                //         MotorDirection::Up => {
+                //             if target_floor > last_floor {
+                //                 Some((target_floor, target_floor - last_floor))
+                //             } else {
+                //                 None
+                //             }
+                //         }
+                //         MotorDirection::Down => {
+                //             if target_floor < last_floor {
+                //                 Some((target_floor, last_floor - target_floor))
+                //             } else {
+                //                 None
+                //             }
+                //         }
+                //         MotorDirection::Stop => {
+                //             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+                //         }
+                //         _ => unreachable!(),
+                //     }
+                // } 
+                // else {
+                //     None
+                // }
+            })
+            .min_by(|(_, d1), (_, d2)| {d1.cmp(d2)});
+            
         println!("NEXT_CALL: {next_call:?}");
 
         if let Some((new_target, _)) = next_call {
             self.set_new_target(new_target);
+        } else {
+            self.elevator.motor_direction(MotorDirection::Stop);
         }
     }
 
