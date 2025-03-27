@@ -27,6 +27,16 @@ impl ElevatorState {
             return;
         }
 
+        let next_floor = next_floor.unwrap();
+        let current_floor = self.state.get_last_seen_floor();
+        
+        // Update current_direction based on next floor
+        if next_floor > current_floor {
+            self.current_direction = MotorDirection::Up;
+        } else if next_floor < current_floor {
+            self.current_direction = MotorDirection::Down;
+        }
+
         controller_handle.send_client_message(
             Target::Specific(self.identifier),
             Message::GotoFloor { go_to_floor: next_floor.unwrap() }
@@ -186,6 +196,18 @@ impl ElevatorState {
     }
 
     pub fn set_state(&mut self, state: CabinState) {
+        // Store direction before going idle
+        if matches!(state, CabinState::Idle { .. }) {
+            // Keep the current_direction as is - it will be used to determine
+            // which direction to resume when new requests arrive
+        }
+        else {
+            self.last_direction = match state {
+                CabinState::Moving { direction, .. } => direction,
+                _ => self.last_direction
+            };
+        };
+        
         self.state = state;
     }
 
@@ -195,6 +217,10 @@ impl ElevatorState {
 
     pub fn get_state_mut(&mut self) -> &mut CabinState {
         &mut self.state
+    }
+
+    pub fn get_last_direction(&self) -> MotorDirection {
+        self.last_direction
     }
 
     pub fn get_request_matrix(&self) -> [[bool; N_BUTTONS]; N_FLOOR as usize] {
@@ -222,6 +248,19 @@ impl ElevatorState {
                 self.request_matrix[floor as usize][CAB_IDX] = true;
             }
         }
+    }
+
+    // Clear hall requests at a specific floor, and specific direction
+    pub fn clear_relevant_hall_requests_at_floor(&mut self, floor: u8, direction: MotorDirection) {
+        match direction {
+            MotorDirection::Up => self.request_matrix[floor as usize][HALL_UP_IDX] = false,
+            MotorDirection::Down => self.request_matrix[floor as usize][HALL_DOWN_IDX] = false,
+            MotorDirection::Stop => unreachable!()
+        }
+    }
+
+    pub fn clear_cab_requests_at_floor(&mut self, floor: u8) {
+        self.request_matrix[floor as usize][CAB_IDX] = false;
     }
 
     // Clear hall requests
@@ -265,20 +304,21 @@ impl ElevatorState {
     }
 
     pub fn get_next_command(&self) -> Option<u8> {
-        if self.state.is_init() {
+        // If elevator is in init state, between floors or door is open, return None
+        if self.state.is_init() || self.state.is_door_open() {
             return None;
         }
 
-        let current_floor = self.state.get_last_seen_floor();
-
-        if self.requests_at_current_floor(current_floor) {
-            return Some(current_floor);
+        if self.state.is_door_open() {
+            return None;
         }
 
-        let next_direction = self.choose_direction(
-            current_floor,
-            self.last_direction
-        );
+        // Get current floor
+        let current_floor = self.state.get_last_seen_floor();
+
+        if self.request_matrix[current_floor as usize][2] {
+            return Some(current_floor);
+        }
 
 
         match next_direction {
@@ -320,8 +360,8 @@ impl ElevatorState {
                 None
             }
         }
-
     }
+
     //  TODO: Check if correct
     // Get next floor to visit based on current requests
 
