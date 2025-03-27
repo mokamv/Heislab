@@ -5,15 +5,15 @@ use common::data_struct::ControllerState::MasterSteppingDown;
 use common::messages::Message;
 use crossbeam_channel::{after, never, Receiver};
 use std::time::{Duration, Instant};
+use common::config::{CLIENT_COUNT, DELAY_TO_BECOME_MASTER, N_FLOOR};
 use ControllerState::{Backup, Master};
-
-const DELAY_TO_BECOME_MASTER: Duration = Duration::from_secs(3); // TODO MOVE TO CONFIG FILE
+use crate::elevator::controller::elevator_pool::ElevatorPool;
 
 pub(in super) struct ControllerSync {
     is_connected: bool,
     controller_id: ConnectionIdentifier,
     controller_state: ControllerState,
-    become_master_signal: Receiver<Instant>
+    become_master_signal: Receiver<Instant>,
 }
 
 impl ControllerSync {
@@ -32,6 +32,7 @@ impl ControllerSync {
 
     pub(in super) fn takeover(
         &mut self,
+        elevator_pool: &ElevatorPool,
         controller_handle: &ControllerHandle
     ) {
         println!("BECOMING MASTER");
@@ -39,6 +40,7 @@ impl ControllerSync {
             controller_handle,
             Master
         );
+        
         controller_handle.send_sync_message(
             Message::ControllerSyncReplace {
                 client0: [[false; 3]; 4],
@@ -102,7 +104,7 @@ impl ControllerSync {
             // Master and backup get connected, Master send data to replace current backup data.
             (Master, Backup) => {
                 controller_handle.send_sync_message(
-                    Message::ControllerSyncReplace {
+                    Message::ControllerSyncReplace { //TODO
                         client0: [[false; 3]; 4],
                         client1: [[false; 3]; 4],
                         client2: [[false; 3]; 4],
@@ -130,7 +132,7 @@ impl ControllerSync {
                         MasterSteppingDown
                     );
                     controller_handle.send_sync_message(
-                        Message::ControllerSyncMerge {
+                        Message::ControllerSyncMerge { //TODO
                             client0: [[false; 3]; 4],
                             client1: [[false; 3]; 4],
                             client2: [[false; 3]; 4],
@@ -143,7 +145,7 @@ impl ControllerSync {
             // Send current data to be merged with the new master.
             (MasterSteppingDown, Master) => {
                 controller_handle.send_sync_message(
-                    Message::ControllerSyncMerge {
+                    Message::ControllerSyncMerge { //TODO
                         client0: [[false; 3]; 4],
                         client1: [[false; 3]; 4],
                         client2: [[false; 3]; 4],
@@ -158,7 +160,7 @@ impl ControllerSync {
                     Master
                 );
                 controller_handle.send_sync_message(
-                    Message::ControllerSyncReplace {
+                    Message::ControllerSyncReplace { //TODO
                         client0: [[false; 3]; 4],
                         client1: [[false; 3]; 4],
                         client2: [[false; 3]; 4],

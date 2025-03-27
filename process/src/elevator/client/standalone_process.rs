@@ -122,7 +122,9 @@ impl StandaloneProcessState {
 
         if self.is_connected_to_controller {
             self.send_cabin_state_to_controller(new_state);
-            self.handle.send_message_to_controller(event.into()); //TODO OMG
+            let event_message = event.try_into();
+            if event_message.is_err() { return; }
+            self.handle.send_message_to_controller(event_message.unwrap());
         } else {
             if let ElevatorEvent::CallButton {..} = event {
                 self.elevator.offline_handle_next_cab_call();
@@ -137,7 +139,7 @@ impl StandaloneProcessState {
             self.send_cabin_state_to_controller(new_state);
         } else {
             // If is disconnected.
-            // Look into the current cabin pressed list and serve the nearest floor, priority to up.
+            // Look into the current cabin pressed list and serve the nearest floor.
             // TODO THIS IS DEEPLY UNOPTIMIZED AND INEFFICIENT, THIS WILL HAVE TO CHANGE
             // TODO Implement an algorithm to keep the same direction
             self.elevator.offline_handle_next_cab_call();

@@ -64,7 +64,6 @@ pub struct StandaloneHandle {
 
 impl StandaloneHandle {
     pub fn send_message_to_controller(&self, message: Message) {
-        if message.is_keep_alive() { return; }
         self.to_pool_from_handle.send(
             TimedMessage::of(message)
         ).unwrap()

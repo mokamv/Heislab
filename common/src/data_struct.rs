@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use std::process::id;
 use driver_rust::elevio::elev::MotorDirection::Down;
 use MotorDirection::Up;
-use crate::config::N_FLOOR;
+use crate::config::{CLIENT_COUNT, N_FLOOR};
 use crate::data_struct::CabinState::{Between, DoorOpen, Idle, Init};
 use crate::data_struct::CallRequest::{Cab, Hall};
 use crate::data_struct::ControllerState::{Backup, Master, MasterSteppingDown};
@@ -282,6 +282,29 @@ impl CallLightArray {
                 acc.push((Cab { floor }, floor_light_array[2]));
                 acc
             })
+    }
+}
+
+const CLIENTS_RAW_SIZE: usize = (N_FLOOR * (2 + CLIENT_COUNT)) as usize;
+const FCRM_RAW_SIZE: usize = CLIENT_COUNT as usize + CLIENTS_RAW_SIZE;
+pub struct FullControllerRequestsMatrix {
+    client_ids: [u8; CLIENT_COUNT as usize],
+    clients: [[bool; (2 + CLIENT_COUNT) as usize]; N_FLOOR as usize]
+}
+
+impl FullControllerRequestsMatrix {
+    pub(super) fn encode(&self) -> [u8; FCRM_RAW_SIZE] {
+        let mut raw_output = [0u8; FCRM_RAW_SIZE];
+        raw_output[0..CLIENT_COUNT as usize].copy_from_slice(&self.client_ids);
+        let clients: [u8; CLIENTS_RAW_SIZE] = self.clients
+            .iter()
+            .flatten()
+            .map(|x| *x as u8)
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap();
+        raw_output[CLIENT_COUNT as usize..FCRM_RAW_SIZE].copy_from_slice(&clients);
+        raw_output
     }
 }
 

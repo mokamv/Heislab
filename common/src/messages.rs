@@ -533,19 +533,27 @@ impl Message {
     }
 }
 
-impl From<ElevatorEvent> for Message {
-    fn from(value: ElevatorEvent) -> Self {
+impl TryFrom<ElevatorEvent> for Message {
+    type Error = ();
+
+    fn try_from(value: ElevatorEvent) -> Result<Self, Self::Error> {
         match value {
-            ElevatorEvent::CallButton { floor, call } => ClientButtonCall {
-                pressed: match call {
-                    CallType::HallUp => Hall { floor, direction: MotorDirection::Up },
-                    CallType::HallDown => Hall { floor, direction: MotorDirection::Down },
-                    CallType::Cab => Cab { floor }
+            ElevatorEvent::CallButton { floor, call } => Ok(
+                ClientButtonCall {
+                    pressed: match call {
+                        CallType::HallUp => Hall { floor, direction: MotorDirection::Up },
+                        CallType::HallDown => Hall { floor, direction: MotorDirection::Down },
+                        CallType::Cab => Cab { floor }
+                    }
                 }
-            },
-            ElevatorEvent::FloorSensor { .. } => KeepAlive, // Use keep alive as a non-message.
-            ElevatorEvent::Obstruction { obstructed } => ClientObstructed { is_obstructed: obstructed },
-            ElevatorEvent::StopButton { stopped } => ClientStopButton { is_pressed: stopped }
+            ),
+            ElevatorEvent::FloorSensor { .. } => Err(()),
+            ElevatorEvent::Obstruction { obstructed } => Ok(
+                ClientObstructed { is_obstructed: obstructed }
+            ),
+            ElevatorEvent::StopButton { stopped } => Ok(
+                ClientStopButton { is_pressed: stopped }
+            )
         }
     }
 }

@@ -24,6 +24,7 @@ pub fn start_controller_process_thread(
             select! {
                 recv(controller_sync.recv_takeover_signal()) -> _ => {
                     controller_sync.takeover(
+                        &elevator_pool,
                         &controller_handle
                     )
                 }
