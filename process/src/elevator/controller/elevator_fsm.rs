@@ -323,21 +323,30 @@ impl ElevatorState {
             return None;
         }
 
-        if self.state.is_door_open() {
-            return None;
-        }
-
         // Get current floor
         let current_floor = self.state.get_last_seen_floor();
 
-        if self.request_matrix[current_floor as usize][2] {
+        if self.request_matrix[current_floor as usize][CAB_IDX] {
             return Some(current_floor);
         }
 
 
         match self.last_direction {
-            MotorDirection::Stop => None, // No requests
+            MotorDirection::Stop => {
+                let last_floor = self.state.get_last_seen_floor();
+                let distance: usize = usize::MAX;
+                let mut closest_floor: Option<u8> = None;
 
+                for floor in 0..N_FLOOR as u8 {
+                    if self.requests_at_current_floor(floor) {
+                        let new_distance = (floor as i32 - last_floor as i32).abs() as usize;
+                        if new_distance < distance {
+                            closest_floor = Some(floor);
+                        }
+                    }
+                }
+                closest_floor
+            },
             MotorDirection::Up => {
                 // Check for requests above current floor
                 for floor in current_floor + 1..N_FLOOR as u8 {
@@ -353,7 +362,7 @@ impl ElevatorState {
                         }
                     }
                 }
-                None
+                None // No requests
             },
 
             MotorDirection::Down => {
