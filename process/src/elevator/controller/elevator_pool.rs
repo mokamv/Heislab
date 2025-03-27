@@ -57,6 +57,15 @@ impl ElevatorPool {
                 let _ = self
                     .execute_hall_request_assigner()
                     .unwrap();
+
+            
+                for elevator in self.pool.iter() {
+                    elevator.set_all_lights(controller_handle);
+                }
+
+                for elevator in self.pool.iter() {
+                    elevator.fsm_on_request_button_press(controller_handle);
+                }
             }
 
             Message::ClientObstructed { is_obstructed } =>
