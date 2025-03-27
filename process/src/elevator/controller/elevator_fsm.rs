@@ -146,28 +146,32 @@ impl ElevatorState {
         let current_floor = self.state.get_last_seen_floor();
         let direction = self.last_direction;
 
+        // Always stop at current floor if there is a cab request
         if self.request_matrix[current_floor as usize][CAB_IDX] {
             return true;
         }
 
         match direction {
             MotorDirection::Up => {
-                return {
-                    self.request_matrix[current_floor as usize][HALL_UP_IDX] || // Hall up
-                    self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
-                    !self.requests_above(current_floor)
-                }
+                // Stop if:
+                // 1. There's an up request at this floor
+                // 2. OR no more requests above and any request at this floor
+                self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
+                (!self.requests_above(current_floor) && 
+                    (self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
+                     self.request_matrix[current_floor as usize][HALL_DOWN_IDX]))
             }
             MotorDirection::Down => {
-                return {
-                    self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || // Hall down
-                    self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
-                    !self.requests_below(current_floor)
-                }
+                // Stop if:
+                // 1. There's a down request at this floor
+                // 2. OR no more requests below and any request at this floor
+                self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || 
+                (!self.requests_below(current_floor) && 
+                    (self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
+                     self.request_matrix[current_floor as usize][HALL_DOWN_IDX]))
             }
-            MotorDirection::Stop => {}
+            MotorDirection::Stop => true
         }
-        true
     }
 
     pub fn check_should_clear_request_immediately(&self, floor: u8, request: CallRequest) -> bool {
