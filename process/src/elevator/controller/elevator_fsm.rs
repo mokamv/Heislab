@@ -71,6 +71,17 @@ impl ElevatorState {
 
 impl ElevatorState {
     // Request functions:
+    pub fn has_requests(&self) -> bool {
+        for floor in 0..N_FLOOR {
+            for btn in 0..N_BUTTONS {
+                if self.request_matrix[floor as usize][btn] {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn requests_above(&self, floor: u8) -> bool {
         if floor >= N_FLOOR  - 1{
             return false;
@@ -142,37 +153,37 @@ impl ElevatorState {
         }
     }
 
-    pub fn check_should_stop(&self) -> bool {
-        let current_floor = self.state.get_last_seen_floor();
-        let direction = self.last_direction;
+    // pub fn check_should_stop(&self) -> bool {
+    //     let current_floor = self.state.get_last_seen_floor();
+    //     let direction = self.last_direction;
 
-        // Always stop at current floor if there is a cab request
-        if self.request_matrix[current_floor as usize][CAB_IDX] {
-            return true;
-        }
+    //     // Always stop at current floor if there is a cab request
+    //     if self.request_matrix[current_floor as usize][CAB_IDX] {
+    //         return true;
+    //     }
 
-        match direction {
-            MotorDirection::Up => {
-                // Stop if:
-                // 1. There's an up request at this floor
-                // 2. OR no more requests above and any request at this floor
-                self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
-                (!self.requests_above(current_floor) && 
-                    (self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
-                     self.request_matrix[current_floor as usize][HALL_DOWN_IDX]))
-            }
-            MotorDirection::Down => {
-                // Stop if:
-                // 1. There's a down request at this floor
-                // 2. OR no more requests below and any request at this floor
-                self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || 
-                (!self.requests_below(current_floor) && 
-                    (self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
-                     self.request_matrix[current_floor as usize][HALL_DOWN_IDX]))
-            }
-            MotorDirection::Stop => true
-        }
-    }
+    //     match direction {
+    //         MotorDirection::Up => {
+    //             // Stop if 
+    //             // 1. There's an up request at this floor
+    //             // 2. OR no more requests above and any request at this floor
+    //             self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
+    //             (!self.requests_above(current_floor) && 
+    //                 (self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
+    //                  self.request_matrix[current_floor as usize][HALL_DOWN_IDX]))
+    //         }
+    //         MotorDirection::Down => {
+    //             // Stop if:
+    //             // 1. There's a down request at this floor
+    //             // 2. OR no more requests below and any request at this floor
+    //             self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || 
+    //             (!self.requests_below(current_floor) && 
+    //                 (self.request_matrix[current_floor as usize][HALL_UP_IDX] || 
+    //                  self.request_matrix[current_floor as usize][HALL_DOWN_IDX]))
+    //         }
+    //         MotorDirection::Stop => true
+    //     }
+    // }
 
     pub fn check_should_clear_request_immediately(&self, floor: u8, request: CallRequest) -> bool {
         self.request_matrix[floor as usize][CAB_IDX]
@@ -200,19 +211,19 @@ impl ElevatorState {
         self.is_connected = is_connected;
     }
 
+    // Store direction before going idle
     pub fn set_state(&mut self, state: CabinState) {
-        // Store direction before going idle
-        if matches!(state, CabinState::Idle { .. }) {
-            // Keep the current_direction as is - it will be used to determine
-            // which direction to resume when new requests arrive
+        match state {
+            CabinState::Idle { .. } => {
+                if !self.has_requests() {
+                    // Set motor direction to stop if no requests
+                    self.last_direction = MotorDirection::Stop;
+                }
+                // else keep the current direction for resuming in same direction when new requests arrive
+            }
+            CabinState::Between { .. } => state.get_direction(),
+            _ => {} // else keep the current direction
         }
-        else {
-            self.last_direction = match state {
-                CabinState::Between { .. } => state.get_direction(),
-                _ => self.last_direction
-            };
-        };
-        
         self.state = state;
     }
 
