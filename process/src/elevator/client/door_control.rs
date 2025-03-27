@@ -4,8 +4,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::thread::{sleep, spawn};
 use std::time::{Duration, Instant};
-
-const STAYS_OPEN_FOR: Duration = Duration::from_secs(3); //TODO MOVE TO CONFIG
+use common::config::DOOR_OPEN_DURATION;
 
 pub struct DoorControl {
     close_door_receiver: Receiver<()>,
@@ -37,7 +36,7 @@ impl DoorControl {
                             continue 'timer
                         }
 
-                        if begin.elapsed() > STAYS_OPEN_FOR {
+                        if begin.elapsed() > DOOR_OPEN_DURATION {
                             break 'timer
                         }
                     }
