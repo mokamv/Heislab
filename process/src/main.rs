@@ -1,18 +1,18 @@
 use std::env::args;
 use std::str::FromStr;
+use common::config::VALID_CLIENT_IDS;
 use common::connection::event_handle::controller_handle::controller_handle::ControllerHandleConfiguration;
 use common::connection::event_handle::handle_pool::HandlePool;
+use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::connection::receiver::epoll::epoll_receiver::EpollReceiver;
 use log::{log_server, LogLevel};
 use log::log_client::Logger;
 use process::elevator::client::standalone_process::start_standalone_process_thread;
 use process::elevator::controller::controller_process::start_controller_process_thread;
 
-const CLIENT_COUNT: usize = 3; // TODO MOVE TO CONFIG
-
 fn main() {
     let mut overview: bool = false;
-    let mut id: Option<u8> = None;
+    let mut id: Option<ConnectionIdentifier> = None;
     let mut with_controller: bool = true;
     let mut with_client: bool = true;
 
@@ -58,8 +58,13 @@ fn main() {
     }
 }
 
-fn extract_id(string: &str) -> u8 {
-    u8::from_str(string).unwrap_or_else(|e| { panic!("{}", e) })
+fn extract_id(string: &str) -> ConnectionIdentifier {
+    let potential_id = ConnectionIdentifier::from_str(string).unwrap_or_else(|e| { panic!("{}", e) });
+    if !VALID_CLIENT_IDS.contains(&potential_id) {
+        panic!("{potential_id} is not a valid id, please use of those: {VALID_CLIENT_IDS:?}")
+    } else {
+        potential_id
+    }
 }
 
 fn start_process(
@@ -90,10 +95,9 @@ fn start_process(
         let mut controller_config =
             ControllerHandleConfiguration::new(process_id);
 
-        controller_config
-            .add_client(0)
-            .add_client(1)
-            .add_client(2);
+        for valid_client_id in VALID_CLIENT_IDS {
+            controller_config.add_client(valid_client_id);
+        }
 
         Some(
             handle_pool.with_controller_handle(

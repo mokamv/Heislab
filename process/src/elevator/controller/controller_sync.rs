@@ -246,6 +246,7 @@ impl ControllerSync {
         }
 
         self.controller_state = new_controller_state;
+        controller_handle.send_controller_state(new_controller_state);
         if self.is_connected {
             controller_handle.send_sync_message(
                 Message::ControllerSyncState {

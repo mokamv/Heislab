@@ -1,17 +1,18 @@
+use std::ops::{BitAndAssign, BitOrAssign};
+use std::time::Instant;
 use common::data_struct::{CabinState, CallRequest};
 use common::messages::Message;
 use driver_rust::elevio::elev::MotorDirection;
 use std::vec;
+use common::config::N_FLOOR;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 
-const N_FLOOR: usize = 4; //TODO: Move to config file
 
 pub struct ElevatorState {
     identifier: ConnectionIdentifier,
     is_connected: bool,
-    is_obstructed: bool,
     state: CabinState,
-    request_matrix: Vec<[bool; 3]>, // [ hall up | hall down | cab ]
+    request_matrix: [[bool; 3]; N_FLOOR as usize], // [ hall up | hall down | cab ]
 }
 
 impl ElevatorState {
@@ -43,9 +44,8 @@ impl ElevatorState {
         Self {
             identifier,
             is_connected: false,
-            is_obstructed: false,
             state: CabinState::default(),
-            request_matrix: vec![[false; 3]; N_FLOOR]
+            request_matrix: [[false; 3]; N_FLOOR as usize]
         }
     }
 
@@ -73,8 +73,8 @@ impl ElevatorState {
         &self.state
     }
 
-    pub fn get_request_matrix(&self) -> &Vec<[bool; 3]> {
-        &self.request_matrix
+    pub fn get_request_matrix(&self) -> [[bool; 3]; N_FLOOR as usize] {
+        self.request_matrix
     }
 
     pub fn is_connected(&self) -> bool {
@@ -85,13 +85,13 @@ impl ElevatorState {
         ! self.state.is_door_open()
     }
 
-    pub fn add_request(&mut self, request: CallRequest) { // TODO: Error if request is not valid
+    pub fn add_request(&mut self, request: CallRequest) {
         match request {
             CallRequest::Hall { floor, direction } => {
                 match direction {
                     MotorDirection::Up => self.request_matrix[floor as usize][0] = true,
                     MotorDirection::Down => self.request_matrix[floor as usize][1] = true,
-                    MotorDirection::Stop => {}
+                    MotorDirection::Stop => unreachable!()
                 }
             }
             CallRequest::Cab { floor } => {
@@ -109,22 +109,34 @@ impl ElevatorState {
     }
 
     // Get hall requests in the format needed for the hall request assigner
-    pub fn get_hall_requests(&self) -> Vec<[bool; 2]> {
+    pub fn get_hall_requests(&self) -> [[bool; 2]; N_FLOOR as usize] {
         self.request_matrix
             .iter()
             .map(|floor| [floor[0], floor[1]]) // Convert [hall_up, hall_down, cab] to [hall_up, hall_down]
-            .collect()
+            .collect::<Vec<[bool; 2]>>()
+            .try_into()
+            .unwrap()
     }
 
     // Get cab requests in the format needed for the hall request assigner
-    pub fn get_cab_requests(&self) -> Vec<bool> {
+    pub fn get_cab_requests(&self) -> [bool; N_FLOOR as usize] {
         self.request_matrix
             .iter()
             .map(|floor| floor[2]) // Get only cab requests
-            .collect()
+            .collect::<Vec<bool>>()
+            .try_into()
+            .unwrap()
     }
 
-    pub fn update_request_matrix(&mut self, request_matrix: Vec<[bool; 3]>) {
+    pub fn merge_cab_requests(&mut self, cab_requests: [bool; N_FLOOR as usize]) {
+        for (floor, value) in cab_requests.into_iter().enumerate() {
+            self.request_matrix
+                .get_mut(floor)
+                .unwrap()[2].bitor_assign(value);
+        }
+    }
+
+    pub fn update_request_matrix(&mut self, request_matrix: [[bool; 3]; N_FLOOR as usize]) {
         self.request_matrix = request_matrix;
     }
 

@@ -71,6 +71,8 @@ impl UdpAckSocket {
         &mut self,
         mut payload: Payload,
     ) {
+        debug_assert!(!payload.message().is_keep_alive());
+
         let key: MapperKey = (payload.sender(), payload.destination());
         debug_assert!(self.routes.get(&key).is_some());
 
@@ -115,7 +117,7 @@ impl UdpAckSocket {
             .front()
             .unwrap();
 
-        // println!("RESENDING: {:?} at {:?}", resent_payload, Instant::now());
+        println!("RESENDING: {:?} at {:?}", resent_payload, Instant::now());
 
         // TODO ERROR HANDLE
         let _ = self.udp_socket.send_to(

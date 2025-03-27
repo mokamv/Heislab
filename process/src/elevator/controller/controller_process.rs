@@ -4,6 +4,7 @@ use common::connection::event_handle::controller_handle::controller_handle::Cont
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use crossbeam_channel::select;
 use std::thread::{Builder, JoinHandle};
+use std::time::Duration;
 
 pub fn start_controller_process_thread(
     controller_handle: Option<ControllerHandle>,
@@ -37,6 +38,7 @@ pub fn start_controller_process_thread(
 
                 recv(controller_handle.recv_client_message()) -> message => {
                     let message = message.unwrap();
+                    println!("Received from client: {message:?}");
                     elevator_pool.handle_elevator_message(
                         &controller_sync,
                         &controller_handle,

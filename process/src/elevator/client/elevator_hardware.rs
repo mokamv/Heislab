@@ -4,7 +4,7 @@ use driver_rust::elevio::elev::{CallType, Elevator, ElevatorEvent, FloorEvent, M
 use std::time::Duration;
 use crossbeam_channel::Receiver;
 use driver_rust::elevio::elev::FloorEvent::{AtFloor, BetweenFloors};
-use crate::config::N_FLOOR;
+use common::config::N_FLOOR;
 
 pub struct MinimalState {
     cab_called: [bool; N_FLOOR as usize],
@@ -112,6 +112,33 @@ impl ElevatorHardwareState {
     pub fn set_call_light_state(&mut self, call_request: CallRequest, on: bool) {
         let floor = call_request.target();
         self.elevator.call_button_light(floor, call_request.into(), on);
+    }
+
+    pub fn set_all_call_lights_state(&mut self, on: bool) {
+        for floor in 0..N_FLOOR {
+            self.elevator.call_button_light(floor, CallType::Cab, on);
+            self.elevator.call_button_light(floor, CallType::HallUp, on);
+            self.elevator.call_button_light(floor, CallType::HallDown, on);
+        }
+    }
+
+    pub fn set_hall_lights_state(&mut self, on: bool) {
+        for floor in 0..N_FLOOR {
+            self.elevator.call_button_light(floor, CallType::HallUp, on);
+            self.elevator.call_button_light(floor, CallType::HallDown, on);
+        }
+    }
+
+    pub fn set_emergency_light_state(&mut self, on: bool) {
+        self.elevator.stop_button_light(on);
+    }
+
+    pub fn set_cab_pressed(&mut self, cab_pressed: [bool; N_FLOOR as usize]) {
+        self.state.cab_called = cab_pressed
+    }
+
+    pub fn get_cab_pressed(&self) -> [bool; N_FLOOR as usize] {
+        self.state.cab_called
     }
 
     pub fn get_current_cabin_state(&self) -> CabinState {

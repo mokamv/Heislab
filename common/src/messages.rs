@@ -3,9 +3,10 @@ use std::ops::Range;
 use std::time::Instant;
 use driver_rust::elevio::elev::{CallType, ElevatorEvent, MotorDirection};
 use Message::{ClientStopButton, ControllerSyncFinish, ControllerSyncMerge, ControllerSyncReplace, Disconnected};
+use crate::config::N_FLOOR;
 use crate::connection::event_handle::handle_state::ConnectionIdentifier;
-use crate::messages::Message::{Connected, ClientButtonCall, ClientObstructed, ClientCabinState, ControllerAddress, ControllerSyncState, GotoFloor, KeepAlive, LightControl, Ack};
-use crate::data_struct::{CabinState, CallRequest, ControllerState};
+use crate::messages::Message::{Connected, ClientButtonCall, ClientObstructed, ClientCabinState, ControllerAddress, ControllerSyncState, GotoFloor, KeepAlive, LightControl, Ack, ClientSyncCab, FullCallLightControl};
+use crate::data_struct::{CabinState, CallLightArray, CallRequest, ControllerState};
 use crate::data_struct::CallRequest::{Cab, Hall};
 
 const RAW_PAYLOAD_HEADER_SIZE: usize = 2 + 2 + size_of::<usize>() + size_of::<usize>();
@@ -240,11 +241,13 @@ pub enum Message {
     ClientCabinState { cabin_state: CabinState },
     ClientButtonCall { pressed: CallRequest },
     ClientStopButton { is_pressed: bool },
+    ClientSyncCab { cab_pressed: [bool; N_FLOOR as usize] },
 
     // Controller messages
     ControllerAddress { id: u8, state: ControllerState, address: SocketAddr },
     LightControl { button: CallRequest, is_lit: bool },
     GotoFloor { go_to_floor: u8 },
+    FullCallLightControl { light_array: CallLightArray },
 
     // Connection State flow
     Connected,
@@ -307,6 +310,10 @@ impl Message {
                 raw_message[0] = 67;
                 raw_message[1] = is_pressed as u8;
             }
+            ClientSyncCab { cab_pressed } => {
+                raw_message[0] = 68;
+                raw_message[1..(N_FLOOR + 1) as usize].copy_from_slice(&cab_pressed.iter().map(|x| *x as u8).collect::<Vec<u8>>())
+            }
 
             // Controller encode
             ControllerAddress { id, state, address } => {
@@ -335,6 +342,10 @@ impl Message {
                 raw_message[0] = 130;
                 raw_message[1] = go_to_floor;
             },
+            FullCallLightControl { light_array } => {
+                raw_message[0] = 131;
+                raw_message[1..(3 * N_FLOOR + 1) as usize].copy_from_slice(&light_array.encode())
+            }
 
             // State flow
             Disconnected => raw_message[0] = 161,
@@ -415,6 +426,13 @@ impl Message {
             65 => ClientCabinState { cabin_state: CabinState::decode(&raw_message[1..4]) },
             66 => ClientButtonCall { pressed: CallRequest::decode(&raw_message[1..4]) },
             67 => ClientStopButton { is_pressed: raw_message[1] != 0 },
+            68 => {
+                let mut cab_pressed= [false; N_FLOOR as usize];
+                cab_pressed.copy_from_slice(&raw_message[1..(N_FLOOR + 1) as usize].iter().map(|x1| *x1 != 0).collect::<Vec<bool>>());
+                ClientSyncCab {
+                    cab_pressed
+                }
+            }
             
             // Controller messages
             128 => ControllerAddress {
@@ -437,6 +455,7 @@ impl Message {
                 } },
             129 => LightControl { button: CallRequest::decode(&raw_message[1..4]), is_lit: raw_message[4] != 0 },
             130 => GotoFloor { go_to_floor: raw_message[1] },
+            131 => FullCallLightControl { light_array: CallLightArray::decode(&raw_message[1..(3 * N_FLOOR + 1) as usize]) },
 
 
             161 => Disconnected,

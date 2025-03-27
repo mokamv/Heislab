@@ -1,10 +1,12 @@
 use driver_rust::elevio::elev::{CallType, MotorDirection};
 use std::cmp::Ordering;
-
+use std::process::id;
+use driver_rust::elevio::elev::MotorDirection::Down;
+use MotorDirection::Up;
+use crate::config::N_FLOOR;
 use crate::data_struct::CabinState::{Between, DoorOpen, Idle, Init};
 use crate::data_struct::CallRequest::{Cab, Hall};
 use crate::data_struct::ControllerState::{Backup, Master, MasterSteppingDown};
-
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CallRequest {
@@ -18,7 +20,7 @@ impl Into<CallType> for CallRequest {
             Cab { .. } => CallType::Cab,
             Hall { direction, .. } => match direction {
                 MotorDirection::Down => CallType::HallDown,
-                MotorDirection::Up => CallType::HallUp,
+                Up => CallType::HallUp,
                 MotorDirection::Stop => unreachable!()
             }
         }
@@ -79,7 +81,7 @@ impl CallRequest {
         match *self {
             Cab { .. } => CallType::Cab as u8,
             Hall { direction, .. } => match direction {
-                MotorDirection::Up => CallType::HallUp as u8,
+                Up => CallType::HallUp as u8,
                 MotorDirection::Down => CallType::HallDown as u8,
                 _ => unreachable!("Shouldn't happen")
             }
@@ -131,14 +133,14 @@ impl CabinState {
 
         *self = match Self::get_direction_from_to(from_floor, to_floor) {
             MotorDirection::Down => Between { from_floor: to_floor, to_floor: to_floor - 1 },
-            MotorDirection::Up => Between { from_floor: to_floor, to_floor: to_floor + 1 },
+            Up => Between { from_floor: to_floor, to_floor: to_floor + 1 },
             MotorDirection::Stop => unreachable!()
         }
     }
 
     pub fn get_direction_relative_to(&self, to: u8) -> MotorDirection {
         match self.get_current_floor_relative_to(to).cmp(&to) {
-            Ordering::Less => MotorDirection::Up,
+            Ordering::Less => Up,
             Ordering::Equal => MotorDirection::Stop,
             Ordering::Greater => MotorDirection::Down
         }
@@ -173,7 +175,7 @@ impl CabinState {
 
     pub fn get_direction_from_to(from: u8, to: u8) -> MotorDirection {
         match from.cmp(&to) {
-            Ordering::Less => MotorDirection::Up,
+            Ordering::Less => Up,
             Ordering::Equal => MotorDirection::Stop,
             Ordering::Greater => MotorDirection::Down
         }
@@ -222,6 +224,65 @@ impl CabinState {
         }
     }
 
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct CallLightArray {
+    light_array: [[bool; 3]; N_FLOOR as usize]
+}
+
+impl CallLightArray {
+    pub(super) fn encode(&self) -> [u8; (N_FLOOR * 3) as usize] {
+        let a = self.light_array
+            .iter()
+            .flatten()
+            .map(|x| *x as u8)
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap();
+
+        println!("{a:?}");
+        a
+    }
+
+    pub(super) fn decode(raw_bytes: &[u8]) -> Self {
+        debug_assert_eq!(raw_bytes.len(), (N_FLOOR * 3) as usize);
+        let mut light_array = [[false; 3]; N_FLOOR as usize];
+        let raw_lights = raw_bytes
+            .iter()
+            .map(|x| *x != 0)
+            .collect::<Vec<bool>>();
+
+        for (idx, floor_light_array) in light_array.iter_mut().enumerate() {
+            floor_light_array.copy_from_slice(
+                &raw_lights[3 * idx..3 * idx + 3]
+            )
+        }
+
+
+        Self {
+            light_array
+        }
+    }
+
+    pub fn from(light_array: [[bool; 3]; N_FLOOR as usize]) -> Self {
+        Self {
+            light_array,
+        }
+    }
+
+    pub fn into_usable_light_control(self) -> Vec<(CallRequest, bool)> {
+        self.light_array
+            .iter()
+            .enumerate()
+            .fold(vec![], |mut acc, (floor, floor_light_array)| {
+                let floor = floor as u8;
+                acc.push((Hall { floor, direction: Up}, floor_light_array[0]));
+                acc.push((Hall { floor, direction: Down}, floor_light_array[1]));
+                acc.push((Cab { floor }, floor_light_array[2]));
+                acc
+            })
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
