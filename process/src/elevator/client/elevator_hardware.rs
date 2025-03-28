@@ -23,6 +23,7 @@ pub struct ElevatorHardwareState {
 }
 
 impl ElevatorHardwareState {
+    /// Create a new [ElevatorHardwareState] instance with the given address, floor count and poll period.
     pub fn new(addr: &str, floor_count: u8, poll_period: Duration) -> Self {
         let door_control = DoorControl::new(poll_period);
         let mut elevator = Elevator::init(addr, floor_count)
@@ -57,12 +58,17 @@ impl ElevatorHardwareState {
 }
 
 impl ElevatorHardwareState {
+
+    /// Set the target floor for the elevator to reach.
+    /// The function will return the new state of the elevator cabin.
     pub fn set_new_target(&mut self, target: u8) {
         match self.state.cabin {
+            // If the door is open, the elevator is not allowed to move
             CabinState::DoorOpen { .. } => {
                 println!("Go to floor cannot be called while doors are opened");
                 return;
             },
+            // If the elevator is idle or between two floors, set the target and start moving in the right direction
             CabinState::Idle { .. }
             | CabinState::Between { .. } => {
                 self.state.target = Some(target);
@@ -70,12 +76,15 @@ impl ElevatorHardwareState {
                 let from_floor = self.state.cabin.get_current_floor_relative_to(target);
                 let direction = self.state.cabin.get_direction_relative_to(target);
 
+                // Calculate the next floor to reach
                 let to_floor = match direction {
                     MotorDirection::Stop => return self.reach_target(),
                     MotorDirection::Down => from_floor - 1,
                     MotorDirection::Up => from_floor + 1
                 };
 
+                // Update the state and direction of the elevator cabin,
+                // and return its new state
                 self.state.cabin = CabinState::Between { from_floor, to_floor };
 
                 self.set_motor_direction(direction);
@@ -83,24 +92,25 @@ impl ElevatorHardwareState {
                     self.motor_lock_sender = after(MOTOR_CONSIDERED_LOCKED_AFTER);
                 }
             }
-            CabinState::Init => unreachable!("Function go_to_floor cannot be called while elevator is initializing") //TODO
+            CabinState::Init => unreachable!("Function go_to_floor cannot be called while elevator is initializing")
         }
     }
 
+    /// Handle cab calls when the elevator is not connected to the controller (single elevator mode)
+    /// with respect to the current state of the elevator.
     pub fn offline_handle_next_cab_call(&mut self) {
-        // Change call only when idling or if on the way to target 
         match self.state.cabin {
             CabinState::DoorOpen { .. } => return,
-            CabinState::Idle { current_floor } => self.find_closest_call(current_floor, None),
-            CabinState::Between { from_floor, to_floor } => self.find_closest_call(from_floor, Some(to_floor)),
+            CabinState::Idle { current_floor } => self.find_closest_call(current_floor),
+            CabinState::Between { from_floor, .. } => self.find_closest_call(from_floor),
             CabinState::Init => return,
         }
     }
 
-    /// used when resiving cab call in offline mode
-    /// set target to the closest call in motordirection
-    ///  stops elevator if no cab calls
-    pub fn find_closest_call(&mut self, last_floor: u8, to_floor: Option<u8>) {
+    /// Used when receiving cab call in offline mode.
+    /// Set target to the closest call in motordirection,
+    /// and stops elevator if no cab calls
+    pub fn find_closest_call(&mut self, last_floor: u8) {
         let motor_direction = self.state.cabin.get_direction();
         println!("Last floor: {}", last_floor);
         println!("Last direction:{:?}", self.state.last_direction);
@@ -145,8 +155,10 @@ impl ElevatorHardwareState {
         }
     }
 
+    /// Initialize the elevator if it is not yet initialized.
     pub fn init_if_is_not_yet(&mut self) {
         if self.state.cabin == CabinState::Init {
+            // Set the elevator to move down until it reaches a floor
             self.set_motor_direction(MotorDirection::Down);
         }
     }
@@ -157,6 +169,7 @@ impl ElevatorHardwareState {
     }
 
     pub fn set_all_call_lights_state(&mut self, on: bool) {
+        // Loop through all floors and set the call lights
         for floor in 0..N_FLOOR {
             self.elevator.call_button_light(floor, CallType::Cab, on);
             self.elevator.call_button_light(floor, CallType::HallUp, on);
@@ -165,6 +178,7 @@ impl ElevatorHardwareState {
     }
 
     pub fn set_hall_lights_state(&mut self, on: bool) {
+        // Loop through all floors and set the hall lights
         for floor in 0..N_FLOOR {
             self.elevator.call_button_light(floor, CallType::HallUp, on);
             self.elevator.call_button_light(floor, CallType::HallDown, on);
@@ -201,13 +215,17 @@ impl ElevatorHardwareState {
 }
 
 impl ElevatorHardwareState {
+    /// Handle the event of the elevator reaching its target floor.
+    /// This function will set the motor direction to stop, open the door, and turn off the call light.
+    /// The function will return the new state of the elevator cabin.
     fn reach_target(&mut self) {
         self.motor_lock_sender = never();
         self.is_motor_locked = false;
-
         self.set_motor_direction(MotorDirection::Stop);
+        // Open the door
         self.elevator.door_light(true);
         self.door_control.open_door();
+
         let floor_reached = self.state.target.unwrap();
         self.elevator.call_button_light(floor_reached, CallType::Cab, false);
         self.state.cab_called[floor_reached as usize] = false;
@@ -215,6 +233,8 @@ impl ElevatorHardwareState {
         self.state.target = None;
     }
 
+    /// Handle the event of the elevator reaching a floor and does not have a target floor.
+    /// The function will set the motor direction to stop and return the new state of the elevator cabin.
     fn reach_idle(&mut self, floor: u8) {
         self.motor_lock_sender = never();
         self.is_motor_locked = false;
@@ -223,6 +243,8 @@ impl ElevatorHardwareState {
         self.state.cabin = CabinState::Idle { current_floor: floor };
     }
 
+    /// Handle the event of the elevator reaching a floor that is not the target floor.
+    /// The function will increment the values inside the [Between] state and return the new state of the elevator cabin.
     fn reach_non_target_floor(&mut self) {
         self.motor_lock_sender = never();
         self.is_motor_locked = false;
@@ -231,32 +253,36 @@ impl ElevatorHardwareState {
 }
 
 impl ElevatorHardwareState {
+    /// Handle the native event of the elevator.
     pub fn handle_native_event(&mut self, event: ElevatorEvent) {
         match event {
             ElevatorEvent::CallButton { floor, call } => self.handle_call_button(floor, call),
             ElevatorEvent::FloorSensor { floor } => self.handle_floor_sensor_event(floor),
             ElevatorEvent::Obstruction { obstructed } => self.handle_obstruction(obstructed),
-            ElevatorEvent::StopButton { .. } => { } // TODO IMPLEMENT
+            ElevatorEvent::StopButton { .. } => { } // Do nothing
         }
     }
 
     pub fn handle_closed_door_event(&mut self) -> CabinState {
         debug_assert!(self.state.cabin.is_door_open());
+        // turn off lights and go to idle
         self.elevator.door_light(false);
         self.state.cabin = CabinState::Idle { current_floor: self.state.cabin.get_last_seen_floor() };
         self.state.cabin
     }
 
     fn handle_call_button(&mut self, floor: u8, call: CallType) {
+        // When button pressed, set the light and mark the floor as called
         if let CallType::Cab = call {
             self.elevator.call_button_light(floor, CallType::Cab, true);
             self.state.cab_called[floor as usize] = true;
         }
     }
 
+    /// when reaching a floor uppdating the state of the elevator and floor indicators
+    /// handling initialisation when between floors
     fn handle_floor_sensor_event(&mut self, floor: FloorEvent) {
         self.motor_lock_sender = after(MOTOR_CONSIDERED_LOCKED_AFTER);
-
         match floor {
             BetweenFloors() => {
                 // Check for initialization state
@@ -285,7 +311,7 @@ impl ElevatorHardwareState {
     }
 
     fn set_motor_direction(&mut self, motor_direction: MotorDirection) {
-        if(self.state.cabin.get_direction() != motor_direction) {
+        if self.state.cabin.get_direction() != motor_direction {
             self.state.last_direction = self.state.cabin.get_direction();
         }
         self.elevator.motor_direction(motor_direction);

@@ -138,8 +138,8 @@ impl CabinState {
     pub fn get_direction(&self) -> MotorDirection {
         match *self {
             //TODO CHECK UNREACHABLE INIT
-            CabinState::Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor),
-            CabinState::Init => MotorDirection::Down,
+            Between { from_floor, to_floor } => Self::get_direction_from_to(from_floor, to_floor),
+            Init => MotorDirection::Down,
             _ => MotorDirection::Stop,
         }
     }

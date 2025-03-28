@@ -10,7 +10,7 @@ pub const N_FLOOR: u8 = 4;
 pub const CLIENT_COUNT: usize = 3;
 
 /// Possible values for clients ids.
-pub const VALID_CLIENT_IDS: [ConnectionIdentifier; CLIENT_COUNT as usize] =
+pub const VALID_CLIENT_IDS: [ConnectionIdentifier; CLIENT_COUNT] =
     [0,1,2];
 
 /// Rate at which the Elevator Hardware should be polled for events.

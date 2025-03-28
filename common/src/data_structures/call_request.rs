@@ -1,5 +1,4 @@
 use crate::data_structures::call_request::CallRequest::{Cab, Hall};
-use driver_rust::elevio;
 use driver_rust::elevio::elev::MotorDirection::Up;
 use driver_rust::elevio::elev::{CallType, MotorDirection};
 

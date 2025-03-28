@@ -9,6 +9,7 @@ use process::elevator::client::standalone_process::start_standalone_process_thre
 use process::elevator::controller::controller_process::start_controller_process_thread;
 
 fn main() {
+    // Parse command line arguments
     let mut id: Option<ConnectionIdentifier> = None;
     let mut with_controller: bool = true;
     let mut with_client: bool = true;
@@ -43,11 +44,13 @@ fn extract_id(string: &str) -> ConnectionIdentifier {
     }
 }
 
+/// Start the process with the given id and the given components enabled.
 fn start_process(
     process_id: u8,
     standalone_enabled: bool,
     controller_enabled: bool
 ) {
+    // Check if at least one of the components is enabled
     assert!(
         standalone_enabled || controller_enabled,
         "The program needs to start at least one of the components."
@@ -81,6 +84,7 @@ fn start_process(
         )
     } else { None };
 
+    // Start the threads
     let epoll_thread = epoll_receiver.start_receiver_thread_from_builder();
     let pool_thread = handle_pool.start_handle_pool_thread();
     let standalone_thread = start_standalone_process_thread(standalone_handle);
@@ -89,6 +93,7 @@ fn start_process(
         process_id
     );
 
+    // Wait for the threads to finish
     let _ = standalone_thread.join().unwrap();
     let _ = controller_thread.join().unwrap();
     let _ = epoll_thread.join().unwrap();

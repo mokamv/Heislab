@@ -13,6 +13,7 @@ pub struct DoorControl {
 }
 
 impl DoorControl {
+    /// Create a new [DoorControl] instance with the given poll period.
     pub(in super) fn new(poll_period: Duration) -> DoorControl {
         let (close_door_tx, close_door_rx) = unbounded::<()>();
         
@@ -25,10 +26,13 @@ impl DoorControl {
             is_open: is_open.clone()
         };
 
+        // Spawn a new thread to handle the door control
         spawn(move || {
             loop {
+                // If the door is open, check if it should be closed
                 if is_open.load(Relaxed) {
-                    let mut begin = Instant::now();
+                    let mut begin = Instant::now(); // Start the timer
+                    // Loop until the door is obstructed or the door has been open for too long
                     'timer: loop {
                         sleep(poll_period);
                         if is_obstructed.load(Relaxed) {
@@ -41,6 +45,7 @@ impl DoorControl {
                         }
                     }
 
+                    // Close the door when the timer is up and send the close door event
                     close_door_tx.send(()).expect("Unexpected state");
                     is_open.store(false, Relaxed);
                 }
@@ -67,70 +72,3 @@ impl DoorControl {
         self.is_obstructed.load(Relaxed)
     }
 }
-
-// #[cfg(test)]
-// mod door_tests {
-//     use super::*;
-//
-//     use crossbeam_channel::{select, Receiver};
-//     use std::sync::{Arc, Mutex};
-//     use std::thread::spawn;
-//     use std::time::{Duration, Instant};
-//
-//     const POLL_DURATION: Duration = Duration::from_millis(25);
-//
-//     fn listen_to_close_event(close_rx: &Receiver<()>, closed_at: Arc<Mutex<Instant>>) {
-//         let close_rx = close_rx.clone();
-//         spawn(move || {
-//             'thread_loop: loop {
-//                 select! {
-//                     recv(close_rx) -> _ => {
-//                         { *closed_at.lock().unwrap() = Instant::now(); }
-//                         break 'thread_loop;
-//                     }
-//                 }
-//             }
-//         });
-//     }
-//
-//     // #[test]
-//     // fn door_close_timer() {
-//     //     let door_control = DoorControl::new(POLL_DURATION);
-//     //     let closed_at = Arc::new(Mutex::new(Instant::now()));
-//     //     listen_to_close_event(door_control.recv_closed_door_event(), closed_at.clone());
-//     //
-//     //     let opened_at = Instant::now();
-//     //     door_control.open_door();
-//     //     sleep(Duration::from_secs(5));
-//     //
-//     //     assert!(closed_at.lock().unwrap().duration_since(opened_at) > STAYS_OPEN_FOR);
-//     //     assert_eq!(door_control.is_open.load(Relaxed), false);
-//     //     assert_eq!(door_control.is_obstructed.load(Relaxed), false);
-//     // }
-//     //
-//     // #[test]
-//     // fn door_obstructed() {
-//     //     let door_control= DoorControl::new(POLL_DURATION);
-//     //     let closed_at = Arc::new(Mutex::new(Instant::now()));
-//     //     listen_to_close_event(door_control.recv_closed_door_event(), closed_at.clone());
-//     //
-//     //     let opened_at = Instant::now();
-//     //     door_control.open_door();
-//     //     door_control.update_obstruction(true);
-//     //
-//     //     let mut i = 0;
-//     //     while i < 5 {
-//     //         sleep(Duration::from_secs(2));
-//     //         assert_eq!(door_control.is_open.load(Relaxed), true);
-//     //         assert_eq!(door_control.is_obstructed.load(Relaxed), true);
-//     //         i += 1;
-//     //     }
-//     //
-//     //     door_control.update_obstruction(false);
-//     //     sleep(Duration::from_secs(4));
-//     //
-//     //     assert!(closed_at.lock().unwrap().duration_since(opened_at) > Duration::from_secs(10) + STAYS_OPEN_FOR);
-//     //     assert_eq!(door_control.is_open.load(Relaxed), false);
-//     //     assert_eq!(door_control.is_obstructed.load(Relaxed), false);
-//     // }
-// }

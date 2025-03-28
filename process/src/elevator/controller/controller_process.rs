@@ -9,7 +9,9 @@ pub fn start_controller_process_thread(
     controller_handle: Option<ControllerHandle>,
     controller_id: ConnectionIdentifier
 ) -> JoinHandle<()> {
+    // Create a new thread builder with the name "Controller"
     let builder = Builder::new().name("Controller".to_string());
+    // If the controller handle is None, the controller process will be a dummy process
     if controller_handle.is_none() { return builder.spawn(|| {}).unwrap() };
 
     let controller_handle = controller_handle.unwrap();
@@ -18,6 +20,7 @@ pub fn start_controller_process_thread(
         controller_handle.clients_id()
     );
     
+    // Spawn a new thread to handle the controller process
     builder.spawn(move || {
         loop {
             select! {
@@ -41,7 +44,6 @@ pub fn start_controller_process_thread(
                     let message = message.unwrap();
                     println!("Received from client: {message:?}");
                     elevator_pool.handle_elevator_message(
-                        &controller_sync,
                         &controller_handle,
                         message.client_id,
                         message.message

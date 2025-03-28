@@ -112,7 +112,8 @@ impl ElevatorState {
 }
 
 impl ElevatorState {
-    pub(super) fn from(identifier: ConnectionIdentifier) -> Self { // Is this used?
+
+    pub(super) fn from(identifier: ConnectionIdentifier) -> Self {
         Self {
             identifier,
             is_connected: false,
@@ -172,8 +173,9 @@ impl ElevatorState {
         self.request_matrix
     }
 
-
+    /// Add a request to the elevator state
     pub fn add_request(&mut self, request: CallRequest) {
+        // Add the request to the request matrix
         match request {
             CallRequest::Hall { floor, direction } => {
                 match direction {
@@ -204,7 +206,8 @@ impl ElevatorState {
     }
 
     pub fn on_door_open_clear_cab_request(&mut self) {
-        debug_assert!(self.state.is_door_open());
+        // Clear the cab request
+        debug_assert!(self.state.is_door_open()); // The elevator must be in the DoorOpen state
         self.request_matrix[self.state.get_last_seen_floor() as usize][CAB_IDX] = false;
     }
 
@@ -258,15 +261,15 @@ impl ElevatorState {
         cleared
     }
 
-    // Clear hall requests
     pub fn clear_hall_requests(&mut self) {
+        // clear all hall requests in the elevators request matrix
         for floor_requests in self.request_matrix.iter_mut() {
             floor_requests[HALL_UP_IDX] = false; // Clear hall up
             floor_requests[HALL_DOWN_IDX] = false; // Clear hall down
         }
     }
 
-    // Get hall requests in the format needed for the hall request assigner
+    /// Get hall requests in the format needed for the hall request assigner
     pub fn get_hall_requests(&self) -> [[bool; 2]; N_FLOOR as usize] {
         self.request_matrix
             .iter()
@@ -286,50 +289,63 @@ impl ElevatorState {
             .unwrap()
     }
 
+    /// Reassign cab requests to the elevator when synchronizing
     pub fn replace_cab_requests(&mut self, cab_requests: [bool; N_FLOOR as usize]) {
+        // Replace current cab requests in the request matrix
         self.request_matrix
             .iter_mut()
             .enumerate()
             .for_each(|(floor, floor_array)| {
-                floor_array[2] = cab_requests[floor]
+                floor_array[CAB_IDX] = cab_requests[floor]
             })
     }
 
+    /// Merge cab requests to the elevator when synchronizing
     pub fn merge_cab_requests(&mut self, cab_requests: [bool; N_FLOOR as usize]) {
+        // Iter through the request matrix and merge the cab requests
+        // Keeping current cab requests if they are true and adding new ones
         self.request_matrix
             .iter_mut()
             .enumerate()
             .for_each(|(floor, floor_array)| {
-                floor_array[2].bitor_assign(cab_requests[floor])
+                floor_array[CAB_IDX].bitor_assign(cab_requests[floor]) // 
             });
     }
 
+    /// Merge hall requests to the elevator when synchronizing
     pub fn merge_request_matrix(&mut self, request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize]) {
+        // Merge input request matrix with the current request matrix
+        // Keeping current requests if they are true and adding new ones
         self.request_matrix
             .iter_mut()
             .enumerate()
             .for_each(|(floor, floor_array)| {
-                floor_array.into_iter()
-                    .zip(request_matrix[floor].into_iter())
+                floor_array.into_iter() 
+                    .zip(request_matrix[floor].into_iter()) 
                     .for_each(|(floor_value, new_value)| {
                         floor_value.bitor_assign(new_value);
                     })
             });
     }
 
+
     pub fn replace_request_matrix(&mut self, request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize]) {
         self.request_matrix = request_matrix;
     }
 
+    /// Calculates the next command for the elevator based on the current state and requests assigned to the elevator
+    /// Returns the next floor to visit or None if the elevator should remain idle
     pub fn get_next_command(&mut self) -> Option<u8> {
+        // If the elevator is in the Init or DoorOpen state, it should not service new request yet
         if self.state.is_init() || self.state.is_door_open() {
             return None;
         }
 
-        self.last_direction = self.choose_direction();
-
         let floor = self.state.get_last_seen_floor();
         let is_between_floor = self.state.is_between();
+
+        // Get the current direction of the elevator
+        self.last_direction = self.choose_direction();
 
         match self.last_direction {
             // When direction is stop, i.e. not going to move
@@ -347,10 +363,14 @@ impl ElevatorState {
             MotorDirection::Down => {
                 let floor = if is_between_floor { floor - 1 } else { floor };
                 let mut consider = None;
+
+                // Check if there are any requests below the current floor in the order from closest to furthest from current floor
                 for f in (0..=floor).rev() {
+                    // Check if there are any HALL_DOWN or CAB requests that are fitted to be serviced in the current direction
                     if self.request_matrix[f as usize][HALL_DOWN_IDX]
                         || self.request_matrix[f as usize][CAB_IDX] {
                         return Some(f);
+                    // If not, check if there are any HALL_UP requests that are fitted to be serviced in the current direction
                     } else if self.request_matrix[f as usize][HALL_UP_IDX] {
                         consider = Some(f);
                     }
@@ -361,10 +381,14 @@ impl ElevatorState {
             MotorDirection::Up => {
                 let floor = if is_between_floor { floor + 1 } else { floor };
                 let mut consider = None;
+
+                // Check if there are any requests above the current floor in the order from closest to furthest from current floor
                 for f in floor..N_FLOOR {
+                    // Check if there are any HALL_UP or CAB requests that are fitted to be serviced in the current direction
                     if self.request_matrix[f as usize][HALL_UP_IDX]
                         || self.request_matrix[f as usize][CAB_IDX] {
                         return Some(f);
+                    // If not, check if there are any HALL_DOWN requests that are fitted to be serviced in the current direction
                     } else if self.request_matrix[f as usize][HALL_DOWN_IDX] {
                         consider = Some(f);
                     }

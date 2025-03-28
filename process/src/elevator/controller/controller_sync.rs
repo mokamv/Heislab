@@ -97,7 +97,6 @@ impl ControllerSync {
             Message::ControllerSyncReplace { full_matrix } =>
                 self.handle_state_replace(
                     elevator_pool,
-                    controller_handle,
                     full_matrix
                 ),
             Message::ControllerSyncFinish => self.handle_state_finish(controller_handle),
@@ -257,18 +256,18 @@ impl ControllerSync {
     fn handle_state_replace(
         &mut self,
         elevator_pool: &mut ElevatorPool,
-        controller_handle: &ControllerHandle,
         full_matrix: FullControllerRequestsMatrix
     ) {
         match self.controller_state {
             Backup => {
-                // TODO COMMENT
+                // While syncing, we only store hall request in the first elevator since they are going to be 
+                // reassigned later
                 elevator_pool.pool[0]
                     .replace_request_matrix(
                         full_matrix.get_requests_matrix_of(0)
                     );
 
-                // TODO COMMENT
+                // Cab requests are not rescheduled and must be stored in the respective elevator
                 if CLIENT_COUNT > 1 {
                     elevator_pool.pool[1..]
                         .iter_mut()
