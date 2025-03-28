@@ -29,6 +29,8 @@ pub const DELAY_TO_BECOME_MASTER: Duration = Duration::from_secs(1);
 /// For how long the doors stay open
 pub const DOOR_OPEN_DURATION: Duration = Duration::from_secs(3);
 
+/// How much time before motor is considered locked
+pub const MOTOR_CONSIDERED_LOCKED_AFTER: Duration = Duration::from_secs(5);
 
 /// Network related config
 

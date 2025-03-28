@@ -91,6 +91,9 @@ impl ElevatorPool {
                 controller_handle
             ),
 
+            Message::ClientMotorLocked { is_motor_locked } =>
+                self.handle_motor_lock(controller_handle, elevator_id, is_motor_locked),
+
             _ => unreachable!()
         }
     }
@@ -125,12 +128,31 @@ impl ElevatorPool {
         is_obstructed: bool
     ) {
         let elevator = self.get_elevator_mut(elevator_id);
-        elevator.set_obstructed(is_obstructed);
+        if elevator.is_obstructed() != is_obstructed {
+            elevator.set_obstructed(is_obstructed);
 
-        // Compute requests repartition.
-        let _ = execute_hall_request_assigner(self).unwrap();
-        // Redistribute calls to every elevator.
-        redistribute_calls(self, controller_handle);
+            // Compute requests repartition.
+            let _ = execute_hall_request_assigner(self).unwrap();
+            // Redistribute calls to every elevator.
+            redistribute_calls(self, controller_handle);
+        }
+    }
+
+    fn handle_motor_lock(
+        &mut self,
+        controller_handle: &ControllerHandle,
+        elevator_id: ConnectionIdentifier,
+        is_motor_locked: bool
+    ) {
+        let elevator = self.get_elevator_mut(elevator_id);
+        if elevator.is_motor_locked() != is_motor_locked {
+            elevator.set_obstructed(is_motor_locked);
+
+            // Compute requests repartition.
+            let _ = execute_hall_request_assigner(self).unwrap();
+            // Redistribute calls to every elevator.
+            redistribute_calls(self, controller_handle);
+        }
     }
 
     fn handle_client_sync_cab(

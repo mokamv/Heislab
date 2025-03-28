@@ -9,7 +9,7 @@ use crate::data_structures::call_request::CallRequest;
 use crate::data_structures::call_request::CallRequest::{Cab, Hall};
 use crate::data_structures::controller_state::ControllerState;
 use crate::data_structures::full_requests_matrix::{FullControllerRequestsMatrix, FCRM_RAW_SIZE};
-use crate::data_structures::network::message::Message::{KeepAlive, Ack,Connected, Disconnected, ClientButtonCall, ClientCabinState, ClientObstructed, ClientStopButton, ClientSyncCab, ControllerAddress, ControllerSyncMerge, ControllerSyncReplace, ControllerSyncState, FullCallLightControl, GotoFloor, LightControl, ControllerSyncFinish};
+use crate::data_structures::network::message::Message::{KeepAlive, Ack, Connected, Disconnected, ClientButtonCall, ClientCabinState, ClientObstructed, ClientStopButton, ClientSyncCab, ControllerAddress, ControllerSyncMerge, ControllerSyncReplace, ControllerSyncState, FullCallLightControl, GotoFloor, LightControl, ControllerSyncFinish, ClientMotorLocked};
 
 pub const RAW_MESSAGE_SIZE: usize = 32;
 pub type RawMessage = [u8; RAW_MESSAGE_SIZE];
@@ -50,6 +50,7 @@ pub enum Message {
     ClientButtonCall { pressed: CallRequest },
     ClientStopButton { is_pressed: bool },
     ClientSyncCab { cab_pressed: [bool; N_FLOOR as usize] },
+    ClientMotorLocked { is_motor_locked: bool },
 
     // Controller messages
     ControllerAddress { id: u8, state: ControllerState, address: SocketAddr },
@@ -111,6 +112,10 @@ impl Message {
             ClientSyncCab { cab_pressed } => {
                 raw_message[0] = 68;
                 raw_message[1..(N_FLOOR + 1) as usize].copy_from_slice(&cab_pressed.iter().map(|x| *x as u8).collect::<Vec<u8>>())
+            }
+            ClientMotorLocked { is_motor_locked } => {
+                raw_message[0] = 69;
+                raw_message[1] = is_motor_locked as u8;
             }
 
             // Controller encode
@@ -186,7 +191,8 @@ impl Message {
                 ClientSyncCab {
                     cab_pressed
                 }
-            }
+            },
+            69 => ClientMotorLocked { is_motor_locked: raw_message[1] != 0 },
 
             // Controller messages
             128 => ControllerAddress {

@@ -11,6 +11,7 @@ pub struct ElevatorState {
     identifier: ConnectionIdentifier,
     is_connected: bool,
     is_obstructed: bool,
+    is_motor_locked: bool,
     last_direction: MotorDirection, // Last non-stop direction
     state: CabinState,
     request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize], // [ hall up | hall down | cab ]
@@ -116,6 +117,7 @@ impl ElevatorState {
             identifier,
             is_connected: false,
             is_obstructed: false,
+            is_motor_locked: false,
             last_direction: MotorDirection::Stop,
             state: Default::default(),
             request_matrix: [[false; N_BUTTONS]; N_FLOOR as usize]
@@ -140,6 +142,14 @@ impl ElevatorState {
 
     pub fn is_obstructed(&self) -> bool {
         self.is_obstructed
+    }
+
+    pub fn set_motor_locked(&mut self, is_motor_locked: bool) {
+        self.is_motor_locked = is_motor_locked;
+    }
+
+    pub fn is_motor_locked(&self) -> bool {
+        self.is_motor_locked
     }
 
     pub fn set_state(&mut self, state: CabinState) {

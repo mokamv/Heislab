@@ -1,9 +1,9 @@
 use crate::elevator::client::door_control::DoorControl;
 use driver_rust::elevio::elev::{CallType, Elevator, ElevatorEvent, FloorEvent, MotorDirection};
-use std::time::Duration;
-use crossbeam_channel::Receiver;
+use std::time::{Duration, Instant};
+use crossbeam_channel::{after, never, Receiver};
 use driver_rust::elevio::elev::FloorEvent::{AtFloor, BetweenFloors};
-use common::config::N_FLOOR;
+use common::config::{MOTOR_CONSIDERED_LOCKED_AFTER, N_FLOOR};
 use common::data_structures::cabin_state::CabinState;
 use common::data_structures::call_request::CallRequest;
 
@@ -18,6 +18,8 @@ pub struct ElevatorHardwareState {
     state: MinimalState,
     elevator: Elevator,
     door_control: DoorControl,
+    is_motor_locked: bool,
+    motor_lock_sender: Receiver<Instant>
 }
 
 impl ElevatorHardwareState {
@@ -36,6 +38,8 @@ impl ElevatorHardwareState {
                 last_direction: MotorDirection::Stop,
             },
             elevator,
+            motor_lock_sender: never(),
+            is_motor_locked: false,
         }
     }
 
@@ -46,15 +50,18 @@ impl ElevatorHardwareState {
     pub fn receive_closed_door_event(&self) -> &Receiver<()> {
         &self.door_control.recv_closed_door_event()
     }
+
+    pub fn receive_motor_lock_event(&self) -> &Receiver<Instant> {
+        &self.motor_lock_sender
+    }
 }
 
 impl ElevatorHardwareState {
-    pub fn set_new_target(&mut self, target: u8) -> CabinState {
+    pub fn set_new_target(&mut self, target: u8) {
         match self.state.cabin {
             CabinState::DoorOpen { .. } => {
                 println!("Go to floor cannot be called while doors are opened");
-                return self.state.cabin
-                // unreachable!("Go to floor cannot be called while doors are opened")
+                return;
             },
             CabinState::Idle { .. }
             | CabinState::Between { .. } => {
@@ -70,8 +77,11 @@ impl ElevatorHardwareState {
                 };
 
                 self.state.cabin = CabinState::Between { from_floor, to_floor };
+
                 self.set_motor_direction(direction);
-                self.state.cabin
+                if self.motor_lock_sender.capacity().unwrap() == 0 {
+                    self.motor_lock_sender = after(MOTOR_CONSIDERED_LOCKED_AFTER);
+                }
             }
             CabinState::Init => unreachable!("Function go_to_floor cannot be called while elevator is initializing") //TODO
         }
@@ -180,10 +190,21 @@ impl ElevatorHardwareState {
     pub fn get_obstruction(&self) -> bool {
         self.door_control.is_obstructed()
     }
+
+    pub fn set_motor_lock(&mut self, is_motor_locked: bool) {
+        self.is_motor_locked = is_motor_locked;
+    }
+
+    pub fn is_motor_locked(&self) -> bool {
+        self.is_motor_locked
+    }
 }
 
 impl ElevatorHardwareState {
-    fn reach_target(&mut self) -> CabinState {
+    fn reach_target(&mut self) {
+        self.motor_lock_sender = never();
+        self.is_motor_locked = false;
+
         self.set_motor_direction(MotorDirection::Stop);
         self.elevator.door_light(true);
         self.door_control.open_door();
@@ -192,29 +213,30 @@ impl ElevatorHardwareState {
         self.state.cab_called[floor_reached as usize] = false;
         self.state.cabin = CabinState::DoorOpen { current_floor: floor_reached };
         self.state.target = None;
-        self.state.cabin
     }
 
-    fn reach_idle(&mut self, floor: u8) -> CabinState {
+    fn reach_idle(&mut self, floor: u8) {
+        self.motor_lock_sender = never();
+        self.is_motor_locked = false;
         self.set_motor_direction(MotorDirection::Stop);
         self.state.target = None;
         self.state.cabin = CabinState::Idle { current_floor: floor };
-        self.state.cabin
     }
 
-    fn reach_non_target_floor(&mut self) -> CabinState {
+    fn reach_non_target_floor(&mut self) {
+        self.motor_lock_sender = never();
+        self.is_motor_locked = false;
         self.state.cabin.increment_between();
-        self.state.cabin
     }
 }
 
 impl ElevatorHardwareState {
-    pub fn handle_native_event(&mut self, event: ElevatorEvent) -> CabinState {
+    pub fn handle_native_event(&mut self, event: ElevatorEvent) {
         match event {
             ElevatorEvent::CallButton { floor, call } => self.handle_call_button(floor, call),
             ElevatorEvent::FloorSensor { floor } => self.handle_floor_sensor_event(floor),
             ElevatorEvent::Obstruction { obstructed } => self.handle_obstruction(obstructed),
-            ElevatorEvent::StopButton { .. } => self.state.cabin // TODO IMPLEMENT
+            ElevatorEvent::StopButton { .. } => { } // TODO IMPLEMENT
         }
     }
 
@@ -225,23 +247,22 @@ impl ElevatorHardwareState {
         self.state.cabin
     }
 
-    fn handle_call_button(&mut self, floor: u8, call: CallType) -> CabinState {
+    fn handle_call_button(&mut self, floor: u8, call: CallType) {
         if let CallType::Cab = call {
             self.elevator.call_button_light(floor, CallType::Cab, true);
             self.state.cab_called[floor as usize] = true;
         }
-
-        self.state.cabin
     }
 
-    fn handle_floor_sensor_event(&mut self, floor: FloorEvent) -> CabinState {
+    fn handle_floor_sensor_event(&mut self, floor: FloorEvent) {
+        self.motor_lock_sender = after(MOTOR_CONSIDERED_LOCKED_AFTER);
+
         match floor {
             BetweenFloors() => {
                 // Check for initialization state
                 if self.state.cabin == CabinState::Init {
                     self.set_motor_direction(MotorDirection::Down);
                 }
-                self.state.cabin
             }
             AtFloor(floor) => {
                 self.elevator.floor_indicator(floor);
@@ -259,9 +280,8 @@ impl ElevatorHardwareState {
         }
     }
 
-    fn handle_obstruction(&mut self, obstructed: bool) -> CabinState {
+    fn handle_obstruction(&mut self, obstructed: bool) {
         self.door_control.update_obstruction(obstructed);
-        self.state.cabin
     }
 
     fn set_motor_direction(&mut self, motor_direction: MotorDirection) {

@@ -35,7 +35,7 @@ pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandl
     builder.spawn(move || {
         loop {
             select! {
-                // Make hall light blinking to signal offline mode
+                // Make stop button blinks to signal offline mode
                 recv(process_state.emergency_blinking.1) -> _ => {
                     process_state.emergency_blinking.0 =
                         !process_state.emergency_blinking.0;
@@ -56,6 +56,10 @@ pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandl
                 },
                 recv(process_state.elevator.receive_closed_door_event()) -> _ => {
                     process_state.handle_closed_door_event();
+                },
+                recv(process_state.elevator.receive_motor_lock_event()) -> _ => {
+                    process_state.handle_motor_lock()
+
                 }
             }
         }
@@ -68,6 +72,18 @@ impl StandaloneProcessState {
         self.handle.send_message_to_controller(
             Message::ClientCabinState {
                 cabin_state: state,
+            }
+        )
+    }
+
+    fn handle_motor_lock(
+        &mut self
+    ) {
+        println!("MOTOR IS LOCKED");
+        self.elevator.set_motor_lock(true);
+        self.handle.send_message_to_controller(
+            Message::ClientMotorLocked {
+                is_motor_locked: true
             }
         )
     }
@@ -92,8 +108,8 @@ impl StandaloneProcessState {
             }
 
             Message::GotoFloor { go_to_floor } => {
-                let new_state = self.elevator.set_new_target(go_to_floor);
-                self.send_cabin_state_to_controller(new_state);
+                self.elevator.set_new_target(go_to_floor);
+                self.send_cabin_state_to_controller(self.elevator.get_current_cabin_state());
             },
 
             Message::LightControl { button: target, is_lit } => {
@@ -118,10 +134,17 @@ impl StandaloneProcessState {
     }
 
     fn handle_native_event(&mut self, event: ElevatorEvent) {
-        let new_state = self.elevator.handle_native_event(event);
+        self.elevator.handle_native_event(event);
 
         if self.is_connected_to_controller {
-            self.send_cabin_state_to_controller(new_state);
+            self.handle.send_message_to_controller(
+                Message::ClientMotorLocked {
+                    is_motor_locked: self.elevator.is_motor_locked()
+                }
+            );
+            self.send_cabin_state_to_controller(
+                self.elevator.get_current_cabin_state()
+            );
             let event_message = event.try_into();
             if event_message.is_err() { return; }
             self.handle.send_message_to_controller(event_message.unwrap());
@@ -139,9 +162,7 @@ impl StandaloneProcessState {
             self.send_cabin_state_to_controller(new_state);
         } else {
             // If is disconnected.
-            // Look into the current cabin pressed list and serve the nearest floor.
-            // TODO THIS IS DEEPLY UNOPTIMIZED AND INEFFICIENT, THIS WILL HAVE TO CHANGE
-            // TODO Implement an algorithm to keep the same direction
+            // Look into the current cabin pressed list.
             self.elevator.offline_handle_next_cab_call();
         }
     }
