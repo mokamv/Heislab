@@ -108,7 +108,7 @@ impl ElevatorHardwareState {
                         Some((target_floor, 0))
                     }else {
                         if target_direction != self.state.last_direction {
-                            Some((target_floor, u8::abs_diff(last_floor, target_floor) + 100))
+                            Some((target_floor, u8::abs_diff(last_floor, target_floor) + N_FLOOR))
                         } else {
                             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
                         }
