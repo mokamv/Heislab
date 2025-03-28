@@ -15,6 +15,7 @@ struct StandaloneProcessState {
     elevator: ElevatorHardwareState
 }
 
+/// Starts single elevator thread, handle the single elevator mode and receving controller messages and events
 pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandle>) -> JoinHandle<()> {
     let builder = Builder::new().name("Standalone".to_string());
     if standalone_handle.is_none() { return builder.spawn(|| {}).unwrap() };
@@ -72,6 +73,8 @@ impl StandaloneProcessState {
         )
     }
 
+    /// Uppdates StandaloneProcessState when receiving a message from the controller
+    /// then sending message to uppdate controller
     fn handle_controller_message(&mut self, message: Message) {
         match message {
             Message::Connected => {
@@ -117,6 +120,7 @@ impl StandaloneProcessState {
         }
     }
 
+    /// Uppdates StandaloneProcessState when receiving a hardware event sending message to controller
     fn handle_native_event(&mut self, event: ElevatorEvent) {
         let new_state = self.elevator.handle_native_event(event);
 
@@ -131,21 +135,19 @@ impl StandaloneProcessState {
             }
         }
     }
-
+    
+    /// Uppdates StandaloneProcessState and sending message to controller 
+    /// or serve the nearest floor in single elevator mode
     fn handle_closed_door_event(&mut self) {
         let new_state = self.elevator.handle_closed_door_event();
         if self.is_connected_to_controller {
-            // If is connected, let the controller handle the situation
             self.send_cabin_state_to_controller(new_state);
         } else {
-            // If is disconnected.
-            // Look into the current cabin pressed list and serve the nearest floor.
-            // TODO THIS IS DEEPLY UNOPTIMIZED AND INEFFICIENT, THIS WILL HAVE TO CHANGE
-            // TODO Implement an algorithm to keep the same direction
             self.elevator.offline_handle_next_cab_call();
         }
     }
 
+    /// Sends the current cabin state to the controller
     fn handle_synchronisation(&mut self) {
         let current_state = self.elevator.get_current_cabin_state();
         let is_obstructed = self.elevator.get_obstruction();
