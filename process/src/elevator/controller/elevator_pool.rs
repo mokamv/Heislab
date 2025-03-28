@@ -259,7 +259,6 @@ impl ElevatorPool {
 
     pub(super) fn get_merged_hall_requests(&self) -> [[bool; 2]; N_FLOOR as usize] {
         self.pool.iter()
-            .filter(|elevator| !elevator.get_state().is_init())
             .map(|elevator| elevator.get_hall_requests())
             .fold([[false; 2]; N_FLOOR as usize], |mut acc, b| {
                 println!("MERGING: acc {:?} with {b:?}", acc);
