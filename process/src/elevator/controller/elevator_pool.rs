@@ -296,6 +296,7 @@ impl ElevatorPool {
 
     pub(super) fn get_full_requests_matrix(&self) -> FullControllerRequestsMatrix {
         let merged_hall_requests = self.get_merged_hall_requests();
+        println!("MERGED HALL REQUEST: {merged_hall_requests:?}");
         let clients_cab_requests = self.get_clients_call_requests();
 
         FullControllerRequestsMatrix::from(

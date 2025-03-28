@@ -260,7 +260,7 @@ impl ControllerSync {
                     }
                 }
                 let full_matrix = elevator_pool.get_full_requests_matrix();
-                println!("FULL MATRIX ON ADD: {full_matrix:?}")
+                println!("FULL MATRIX ON REMOVE: {full_matrix:?}")
             }
             // Stepping down state shouldn't be synced again.
             MasterSteppingDown => {}
