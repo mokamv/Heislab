@@ -44,16 +44,7 @@ impl ControllerSync {
         );
 
         let full_matrix = elevator_pool.get_full_requests_matrix();
-
-        println!();
-        println!();
-        println!();
-        println!();
-        println!("FULL MATRIX ON TAKEOVER: {full_matrix:?}");
-        println!();
-        println!();
-        println!();
-        println!();
+        println!("\n\n\n\n\nFULL MATRIX ON TAKEOVER: {full_matrix:?}\n\n\n\n\n\n");
 
         controller_handle.send_sync_message(
             Message::ControllerSyncReplace { full_matrix }
@@ -230,9 +221,6 @@ impl ControllerSync {
                             .add_request(pressed);
                     }
                 }
-
-                let full_matrix = elevator_pool.get_full_requests_matrix();
-                println!("FULL MATRIX ON ADD: {full_matrix:?}")
             }
             // Stepping down state shouldn't be synced again.
             MasterSteppingDown => {}
@@ -259,8 +247,6 @@ impl ControllerSync {
                             .remove_request(pressed);
                     }
                 }
-                let full_matrix = elevator_pool.get_full_requests_matrix();
-                println!("FULL MATRIX ON REMOVE: {full_matrix:?}")
             }
             // Stepping down state shouldn't be synced again.
             MasterSteppingDown => {}

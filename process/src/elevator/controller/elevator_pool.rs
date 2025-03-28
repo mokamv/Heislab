@@ -261,8 +261,6 @@ impl ElevatorPool {
         self.pool.iter()
             .map(|elevator| elevator.get_hall_requests())
             .fold([[false; 2]; N_FLOOR as usize], |mut acc, b| {
-                println!("MERGING: acc {:?} with {b:?}", acc);
-
                 for i in 0..acc.len() {
                     for j in 0..2 {
                         acc.get_mut(i).unwrap()[j].bitor_assign(b.get(i).unwrap()[j]);
@@ -297,7 +295,6 @@ impl ElevatorPool {
 
     pub(super) fn get_full_requests_matrix(&self) -> FullControllerRequestsMatrix {
         let merged_hall_requests = self.get_merged_hall_requests();
-        println!("MERGED HALL REQUEST: {merged_hall_requests:?}");
         let clients_cab_requests = self.get_clients_call_requests();
 
         FullControllerRequestsMatrix::from(
