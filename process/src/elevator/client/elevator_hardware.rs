@@ -69,9 +69,8 @@ impl ElevatorHardwareState {
                     MotorDirection::Up => from_floor + 1
                 };
 
-                self.state.last_direction = self.state.cabin.get_direction();
                 self.state.cabin = CabinState::Between { from_floor, to_floor };
-                self.elevator.motor_direction(direction);
+                self.set_motordirection(direction);
                 self.state.cabin
             }
             CabinState::Init => unreachable!("Function go_to_floor cannot be called while elevator is initializing") //TODO
@@ -104,8 +103,19 @@ impl ElevatorHardwareState {
                     ((motor_direction == MotorDirection::Up && target_floor > last_floor) ||
                     (motor_direction == MotorDirection::Down && target_floor < last_floor) ||
                     (motor_direction == MotorDirection::Stop ))
-                {
-                    Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+                {   
+                    if target_floor == last_floor {
+                        Some((target_floor, 0))
+                    }else {
+                        if target_direction != self.state.last_direction {
+                            Some((target_floor, u8::abs_diff(last_floor, target_floor) + 100))
+                        } else {
+                            Some((target_floor, u8::abs_diff(last_floor, target_floor)))
+                        }
+                    }
+                    
+                    
+                    
                 } else {
                     None
                 }
@@ -153,15 +163,13 @@ impl ElevatorHardwareState {
         if let Some((new_target, _)) = next_call {
             self.set_new_target(new_target);
         } else {
-            self.state.last_direction = self.state.cabin.get_direction();
-            self.elevator.motor_direction(MotorDirection::Stop);
+            self.set_motordirection(MotorDirection::Stop);
         }
     }
 
     pub fn init_if_is_not_yet(&mut self) {
         if self.state.cabin == CabinState::Init {
-            self.state.last_direction = self.state.cabin.get_direction();
-            self.elevator.motor_direction(MotorDirection::Down);
+            self.set_motordirection(MotorDirection::Down);
         }
     }
 
@@ -204,8 +212,7 @@ impl ElevatorHardwareState {
 
 impl ElevatorHardwareState {
     fn reach_target(&mut self) -> CabinState {
-        self.state.last_direction = self.state.cabin.get_direction();
-        self.elevator.motor_direction(MotorDirection::Stop);
+        self.set_motordirection(MotorDirection::Stop);
         self.elevator.door_light(true);
         self.door_control.open_door();
         let floor_reached = self.state.target.unwrap();
@@ -217,8 +224,7 @@ impl ElevatorHardwareState {
     }
 
     fn reach_idle(&mut self, floor: u8) -> CabinState {
-        self.state.last_direction = self.state.cabin.get_direction();
-        self.elevator.motor_direction(MotorDirection::Stop);
+        self.set_motordirection(MotorDirection::Stop);
         self.state.target = None;
         self.state.cabin = CabinState::Idle { current_floor: floor };
         self.state.cabin
@@ -261,8 +267,7 @@ impl ElevatorHardwareState {
             BetweenFloors() => {
                 // Check for initialization state
                 if self.state.cabin == CabinState::Init {
-                    self.state.last_direction = self.state.cabin.get_direction();
-                    self.elevator.motor_direction(MotorDirection::Down);
+                    self.set_motordirection(MotorDirection::Down);
                 }
                 self.state.cabin
             }
@@ -285,5 +290,10 @@ impl ElevatorHardwareState {
     fn handle_obstruction(&mut self, obstructed: bool) -> CabinState {
         self.door_control.update_obstruction(obstructed);
         self.state.cabin
+    }
+
+    fn set_motordirection(&mut self, motor_direction: MotorDirection) {
+        self.state.last_direction = self.state.cabin.get_direction();
+        self.elevator.motor_direction(motor_direction);
     }
 }
