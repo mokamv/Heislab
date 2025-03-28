@@ -6,7 +6,7 @@ use crate::connection::receiver::epoll::receiver_type::Receiver;
 use crate::connection::receiver::wrapper::udp_broadcast_receiver::ErrorKind::RetryError;
 use crate::connection::receiver::wrapper::udp_broadcast_receiver::UdpBroadcastReceiver;
 use crate::connection::receiver::wrapper::udp_receiver::UdpDataReceiver;
-use crate::constants::{GLOBAL_BIND_ADDRESS, UDP_BC_LISTEN_ADDR};
+use crate::constants::{UDP_BC_LISTEN_ADDR};
 use crate::data_structures::controller_state::ControllerState;
 use crate::data_structures::controller_state::ControllerState::Master;
 use crate::data_structures::network::payload::{NetworkPayloadNode, TimedPayload};
@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::os::fd::{AsRawFd, RawFd};
 use std::thread::{Builder, JoinHandle};
+use crate::config::GLOBAL_BIND_ADDRESS;
 
 pub struct EpollReceiver {
     // Epoll directly related stuff (key, receivers and epoll_fd)

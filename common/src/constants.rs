@@ -16,12 +16,9 @@ pub const N_BUTTONS: usize = 3;
 
 
 /// Network addresses related constants
-const GLOBAL_PORT: u16 = 0;
+pub const GLOBAL_PORT: u16 = 0;
 const BROADCAST_ADDRESS: Ipv4Addr = Ipv4Addr::new(255, 255, 255, 255);
 const GLOBAL_ADDRESS: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
-/// Every non-specific udp socket should bind to this to avoid collision.
-pub const GLOBAL_BIND_ADDRESS: SocketAddr =
-    SocketAddr::new(IpAddr::V4(GLOBAL_ADDRESS), GLOBAL_PORT);
 /// Every socket that job is to listen to the controller broadcast should bind to this address.
 pub const UDP_BC_LISTEN_ADDR: SocketAddr =
     SocketAddr::new(IpAddr::V4(GLOBAL_ADDRESS), CONTROLLER_BC_PORT);

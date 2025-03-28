@@ -1,5 +1,7 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 use crate::connection::event_handle::handle_state::ConnectionIdentifier;
+use crate::constants::GLOBAL_PORT;
 
 /// Expected number of floors
 pub const N_FLOOR: u8 = 4;
@@ -34,3 +36,6 @@ pub const DOOR_OPEN_DURATION: Duration = Duration::from_secs(3);
 pub const CONTROLLER_BC_BIND_PORT: u16 = 9000;
 /// Port used to send and receive the broadcast frames.
 pub const CONTROLLER_BC_PORT: u16 = 9001;
+/// CHANGE THIS TO THE IP OF THE MACHINE
+pub const GLOBAL_BIND_ADDRESS: SocketAddr =
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)), GLOBAL_PORT);
