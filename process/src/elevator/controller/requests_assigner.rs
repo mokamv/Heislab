@@ -16,8 +16,6 @@ pub(super) fn execute_hall_request_assigner(
 ) -> Result<(), String> {
     let hall_requests: [[bool; 2]; N_FLOOR as usize] = elevators.get_merged_hall_requests();
 
-    println!("HALL REQUESTS FOR REEXEC {hall_requests:?}");
-
     let states: HashMap<String, serde_json::Value> = elevators.pool.iter()
         .filter(|elevator| {
             elevator.is_connected()

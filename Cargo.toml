@@ -3,6 +3,4 @@ resolver = "2"
 members = [
     "process",
     "common",
-    "log",
-    "faulted"
 ]

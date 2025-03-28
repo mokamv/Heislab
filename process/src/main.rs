@@ -5,13 +5,10 @@ use common::connection::event_handle::controller_handle::controller_handle::Cont
 use common::connection::event_handle::handle_pool::HandlePool;
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::connection::receiver::epoll::epoll_receiver::EpollReceiver;
-use log::{log_server, LogLevel};
-use log::log_client::Logger;
 use process::elevator::client::standalone_process::start_standalone_process_thread;
 use process::elevator::controller::controller_process::start_controller_process_thread;
 
 fn main() {
-    let mut overview: bool = false;
     let mut id: Option<ConnectionIdentifier> = None;
     let mut with_controller: bool = true;
     let mut with_client: bool = true;
@@ -21,41 +18,20 @@ fn main() {
     
     for argument in args {
         match argument.as_str() {
-            "--overview" => overview = true,
             "--no-controller" => with_controller = false,
             "--no-client" => with_client = false,
             other => id = Some(extract_id(other))
         }
     }
 
-    if !overview && id.is_none() {
+    if id.is_none() {
         panic!("You need to specify an identifier");
-    }
-
-    if overview && id.is_some() {
-        panic!("Cannot use overview with an id")
-    }
-
-    if overview && !with_controller {
-        panic!("--no-controller and --overview are incompatible")
-    }
-
-    if overview && !with_client {
-        panic!("--no-client and --overview are incompatible")
     }
 
     if ! (with_client || with_controller) {
         panic!("--no-client and --no-controller are incompatible")
     }
-
-    if overview {
-        // Start log server, this is blocking.
-        if let Err(error) = log_server::act_as_primary_logger(LogLevel::INFO) {
-            println!("Log server encountered an error: {:?}", error)
-        }
-    } else {
-        start_process(id.unwrap(), with_client, with_controller);
-    }
+    start_process(id.unwrap(), with_client, with_controller);
 }
 
 fn extract_id(string: &str) -> ConnectionIdentifier {
@@ -76,9 +52,6 @@ fn start_process(
         standalone_enabled || controller_enabled,
         "The program needs to start at least one of the components."
     );
-
-    Logger::init_logger();
-    Logger::send_once(format!("[{}][MAIN] Server has started in backup mode", process_id), LogLevel::INFO);
 
     let (mut epoll_receiver, udp_socket) = EpollReceiver::init();
     let bind_address = udp_socket.local_addr().unwrap();
@@ -120,6 +93,4 @@ fn start_process(
     let _ = controller_thread.join().unwrap();
     let _ = epoll_thread.join().unwrap();
     let _ = pool_thread.join().unwrap();
-
-    Logger::terminate_logging();
 }
