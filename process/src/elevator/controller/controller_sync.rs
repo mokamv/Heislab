@@ -194,13 +194,14 @@ impl ControllerSync {
     ) {
         match self.controller_state {
             Backup => {
-                // TODO COMMENT
+                // While syncing, we only store hall request in the first elevator since they are going to be 
+                // reassigned later
                 elevator_pool.pool[0]
                     .replace_request_matrix(
                         full_matrix.get_requests_matrix_of(0)
                     );
 
-                // TODO COMMENT
+                // Cab requests are not rescheduled and must be stored in the respective elevator
                 if CLIENT_COUNT > 1 {
                     elevator_pool.pool[1..]
                         .iter_mut()
