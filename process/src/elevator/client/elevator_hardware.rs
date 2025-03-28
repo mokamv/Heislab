@@ -293,7 +293,9 @@ impl ElevatorHardwareState {
     }
 
     fn set_motordirection(&mut self, motor_direction: MotorDirection) {
-        self.state.last_direction = self.state.cabin.get_direction();
+        if(self.state.cabin.get_direction() != motor_direction) {
+            self.state.last_direction = self.state.cabin.get_direction();
+        }
         self.elevator.motor_direction(motor_direction);
     }
 }
