@@ -82,9 +82,10 @@ impl ElevatorPool {
                     )
                 };
 
-                
+                // Find the next command for every elevator
                 for elevator in self.pool.iter_mut() {
                     let next_floor = elevator.get_next_command();
+                    // If there is a next command, send it to the client
                     if let Some(next_floor) = next_floor {
                         controller_handle.send_client_message(
                             Target::Specific(elevator.get_elevator_identifier()),
@@ -100,7 +101,6 @@ impl ElevatorPool {
             Message::ClientCabinState { cabin_state } =>
                 self.handle_cabin_state(identifier, cabin_state, controller_handle),
 
-            // TODO
             Message::ClientStopButton { .. } => println!("Unimplemented"),
 
             // At connection with a client, the client send it own cab calls
@@ -109,7 +109,7 @@ impl ElevatorPool {
                 elevator.merge_cab_requests(cab_pressed);
                 let new_cab_requests = elevator.get_cab_requests();
 
-                // Compute requests repartition
+                // Reassign hall-requests between the elevators
                 let _ = execute_hall_request_assigner(self).unwrap();
 
                 // Send the merged cab calls back to the clients
@@ -143,8 +143,11 @@ impl ElevatorPool {
         let elevator = self.get_elevator_mut(elevator_id);
         elevator.set_obstructed(is_obstructed);
 
+        // Reassign hall-requests between the elevators
+        // If the elevator is obstructed, it's hall requests are distributed to the other elevators
         let _ = execute_hall_request_assigner(self).unwrap();
 
+        // Recalculate the next command for every elevator, and send it to the clients
         for elevator in self.pool.iter_mut() {
             let next_floor = elevator.get_next_command();
             if let Some(next_floor) = next_floor {
@@ -154,10 +157,9 @@ impl ElevatorPool {
                 );
             }
         }
-
-        //TODO SEND TO CLIENTS?
     }
 
+    /// Handle the cabin state of an elevator client when received
     fn handle_cabin_state(
         &mut self,
         elevator_id: ConnectionIdentifier,
@@ -168,6 +170,7 @@ impl ElevatorPool {
         elevator.set_state(cabin_state);
 
         match cabin_state {
+            // If idling and there is a next command, send it to the client
             CabinState::Idle { .. } => {
                 let next_command = elevator.get_next_command();
                 if let Some(next_command) = next_command {
@@ -182,12 +185,13 @@ impl ElevatorPool {
                 // If door is open, and there are hall_requests there on their way up or down, we
                 // also have to clear the request and turn off the light accordingly
 
-                // Clear all relevant call requests
+                // When elevator opens door, it clears its own cab requests at this floor
                 elevator.on_door_open_clear_cab_request();
+                // Clear relevant hall requests aswell, and return the cleared requests to update lights
                 let cleared_requests =
                     elevator.on_door_open_clear_relevant_hall_requests();
 
-                // Update lights as well.
+                // Update lights
                 for cleared_request in cleared_requests {
                     controller_handle.send_client_message(
                         Target::All,
@@ -202,7 +206,9 @@ impl ElevatorPool {
         }
     }
 
+    /// Get the merged hall requests from all elevators
     pub(super) fn get_merged_hall_requests(&self) -> [[bool; N_HALL_BUTTONS]; N_FLOOR as usize] {
+        // Get the hall requests from all elevators, and merge them
         self.pool.iter()
             .filter(|elevator| !elevator.get_state().is_init())
             .map(|elevator| elevator.get_hall_requests())
@@ -216,9 +222,11 @@ impl ElevatorPool {
             })
     }
 
+    /// Get the cab requests from all clients
     pub(super) fn get_clients_call_requests(&self) -> [[bool; CLIENT_COUNT]; N_FLOOR as usize] {
         let mut clients_cab_requests = [[false; CLIENT_COUNT]; N_FLOOR as usize];
 
+        // Get the raw cab requests from all elevators and merge them into a single array
         let raw_cab_requests: [bool; N_FLOOR as usize * CLIENT_COUNT] = self.pool
             .iter()
             .map(|elevator_state| elevator_state.get_cab_requests())
@@ -227,6 +235,7 @@ impl ElevatorPool {
             .try_into()
             .unwrap();
 
+        // Convert the raw cab requests into a cab requests matrix
         clients_cab_requests.iter_mut()
             .enumerate()
             .for_each(|(floor_idx, floor_array)| {
@@ -239,6 +248,7 @@ impl ElevatorPool {
         clients_cab_requests
     }
 
+    /// Returns a matrix of all requests in the system, both hall and cab requests
     pub(super) fn get_full_requests_matrix(&self) -> FullControllerRequestsMatrix {
         let merged_hall_requests = self.get_merged_hall_requests();
         let clients_cab_requests = self.get_clients_call_requests();
@@ -249,11 +259,13 @@ impl ElevatorPool {
         )
     }
 
+    /// Get the call lights state for a specific elevator
     fn get_call_lights_state_for(&self, elevator_id: ConnectionIdentifier) -> [[bool; N_BUTTONS]; N_FLOOR as usize] {
         let elevator = self.get_elevator(elevator_id);
         let cab_requests = elevator.get_cab_requests();
         let hall_requests = self.get_merged_hall_requests();
 
+        // Merge the hall requests and the cab requests into a single array
         hall_requests.into_iter()
             .zip(cab_requests.into_iter())
             .map(|(hall_reqs, cab_req)| {
