@@ -44,6 +44,17 @@ impl ControllerSync {
         );
 
         let full_matrix = elevator_pool.get_full_requests_matrix();
+
+        println!();
+        println!();
+        println!();
+        println!();
+        println!("FULL MATRIX ON TAKEOVER: {full_matrix:?}");
+        println!();
+        println!();
+        println!();
+        println!();
+
         controller_handle.send_sync_message(
             Message::ControllerSyncReplace { full_matrix }
         )
