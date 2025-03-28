@@ -71,6 +71,8 @@ impl ElevatorState {
 
 impl ElevatorState {
     // Request functions:
+
+    /// Return true if there are requests above last registered floor, false otherwise.
     pub fn requests_above(&self) -> bool {
         let floor = self.state.get_last_seen_floor();
         for f in floor + 1..N_FLOOR {
@@ -83,6 +85,7 @@ impl ElevatorState {
         false
     }
 
+    /// Return true if there are requests below last registered floor, false otherwise.
     pub fn requests_below(&self) -> bool {
         let floor = self.state.get_last_seen_floor();
         for f in 0..floor as usize {
@@ -95,6 +98,7 @@ impl ElevatorState {
         false
     }
 
+    /// Return true if there are requests at last registered floor, false otherwise.
     pub fn requests_at_current_floor(&self) -> bool {
         let floor = self.state.get_last_seen_floor();
         for btn in 0..N_BUTTONS {
@@ -105,11 +109,17 @@ impl ElevatorState {
         false
     }
 
+
+    /// Calculate the next direction based on the current state
     pub fn choose_direction(
         &self,
-    ) -> MotorDirection { //TODO: Check if correct
+    ) -> MotorDirection {
         match self.last_direction {
             MotorDirection::Up => {
+                // If there are requests above the current floor for the elevator to service,
+                // the elevator should be concidered to be going up.
+                // If not, change direction to downwards as long as there still are requests
+                // last_direction will be set to Stop if there are no more requests
                 if self.requests_above() {
                     MotorDirection::Up
                 } else if self.requests_at_current_floor() {
@@ -121,6 +131,10 @@ impl ElevatorState {
                 }
             }
             MotorDirection::Down => {
+                // If there are requests below the current floor for the elevator to service,
+                // the elevator should be concidered to be going down.
+                // If not, change direction to upwards as long as there still are requests
+                // The last_direction will be set to Stop if there are no more requests
                 if self.requests_below() {
                     MotorDirection::Down
                 } else if self.requests_at_current_floor() {
@@ -132,6 +146,9 @@ impl ElevatorState {
                 }
             }
             MotorDirection::Stop => {
+                // If the elevator is Idle, and there are requests up or down, the elevator should
+                // start moving in the direction of the requests.
+                // If there are no requests, the elevator should remain idle
                 if self.requests_at_current_floor() {
                     MotorDirection::Stop
                 } else if self.requests_above() {
@@ -145,6 +162,7 @@ impl ElevatorState {
         }
     }
 
+    /// Calculate the next floor to visit based on the current state
     pub fn choose_nearest_respecting_direction(&self) -> Option<u8> {
         let is_between_floor = self.state.is_between();
         let floor = self.state.get_last_seen_floor();
@@ -153,7 +171,7 @@ impl ElevatorState {
         match direction {
             // When direction is stop, i.e. not going to move
             MotorDirection::Stop => {
-                // It can mean that there are only calls on current floor
+                // It can means that there are only calls on current floor
                 if self.requests_at_current_floor() {
                     Some(floor)
                 }

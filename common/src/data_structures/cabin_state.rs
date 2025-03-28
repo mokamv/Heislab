@@ -22,7 +22,7 @@ pub enum CabinState {
     DoorOpen { current_floor: u8 },
 }
 
-impl Default for CabinState { // is this used?
+impl Default for CabinState { // TODO: is this used?
     /// Default state of the cabin, i.e. [Init]
     fn default() -> Self {
         Init
