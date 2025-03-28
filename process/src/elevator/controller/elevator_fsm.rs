@@ -14,7 +14,7 @@ pub struct ElevatorState {
     identifier: ConnectionIdentifier,
     is_connected: bool,
     is_obstructed: bool,
-    last_direction: MotorDirection, // Last non-stop direction
+    last_direction: MotorDirection, // Last direction the elevator was moving in, Stop if no requests
     state: CabinState,
     request_matrix: [[bool; N_BUTTONS]; N_FLOOR as usize], // [ hall up | hall down | cab ]
 }
@@ -249,6 +249,10 @@ impl ElevatorState {
 
     pub fn can_receive(&self) -> bool {
         !self.state.is_door_open()
+    }
+
+    pub fn set_last_direction(&mut self, direction: MotorDirection) {
+        self.last_direction = direction;
     }
 
     pub fn add_request(&mut self, request: CallRequest) {

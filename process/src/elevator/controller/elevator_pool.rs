@@ -148,21 +148,86 @@ impl ElevatorPool {
             }
             CabinState::DoorOpen { current_floor, .. } => {
 
-                let next_command = elevator.get_next_command();
-
+                 // Clear cab requests first
                 elevator.clear_cab_requests_at_floor(current_floor);
-
-                //TODO: Light test
-
-                // controller_handle.send_client_message(
-                //     Target::Specific(elevator_id),
-                //     Message::LightControl {
-                //         button: CallRequest::Cab { floor: current_floor },
-                //         is_lit: false
-                //     }
-                // );
-
+                
                 let direction = elevator.get_last_direction();
+                match direction {
+                    MotorDirection::Up => {
+                        // Clear up requests at this floor
+                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
+                        
+                        // If no more requests above, clear down requests and change direction
+                        if !elevator.requests_above(current_floor) {
+                            elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
+                            // Change direction if there are requests below
+                            if elevator.requests_below(current_floor) {
+                                elevator.set_last_direction(MotorDirection::Down);
+                            }
+                        }
+
+                        controller_handle.send_client_message(
+                            Target::All,
+                            Message::LightControl {
+                                button: CallRequest::Hall {
+                                    floor: current_floor,
+                                    direction: MotorDirection::Up
+                                },
+                                is_lit: false
+                            }
+                        );
+                    }
+                    MotorDirection::Down => {
+                        // Clear down requests at this floor
+                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
+                        
+                        // If no more requests below, clear up requests and change direction
+                        if !elevator.requests_below(current_floor) {
+                            elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
+                            // Change direction if there are requests above
+                            if elevator.requests_above(current_floor) {
+                                elevator.set_last_direction(MotorDirection::Up);
+                            }
+                        }
+
+                        controller_handle.send_client_message(
+                            Target::All,
+                            Message::LightControl {
+                                button: CallRequest::Hall {
+                                    floor: current_floor,
+                                    direction: MotorDirection::Down
+                                },
+                                is_lit: false
+                            }
+                        );
+                    }
+                    MotorDirection::Stop => {
+                        // Clear all requests at current floor
+                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
+                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
+
+                        controller_handle.send_client_message(
+                            Target::All,
+                            Message::LightControl {
+                                button: CallRequest::Hall {
+                                    floor: current_floor,
+                                    direction: MotorDirection::Up
+                                },
+                                is_lit: false
+                            }
+                        );
+                        controller_handle.send_client_message(
+                            Target::All,
+                            Message::LightControl {
+                                button: CallRequest::Hall {
+                                    floor: current_floor,
+                                    direction: MotorDirection::Down
+                                },
+                                is_lit: false
+                            }
+                        );
+                    }
+                }
 
                 match direction {
                     MotorDirection::Up => {
