@@ -15,6 +15,7 @@ struct StandaloneProcessState {
     elevator: ElevatorHardwareState
 }
 
+/// Starts single elevator thread, handle the single elevator mode and receving controller messages and events
 pub fn start_standalone_process_thread(standalone_handle: Option<StandaloneHandle>) -> JoinHandle<()> {
     let builder = Builder::new().name("Standalone".to_string());
     if standalone_handle.is_none() { return builder.spawn(|| {}).unwrap() };
