@@ -4,6 +4,7 @@ use common::connection::event_handle::controller_handle::controller_handle::Cont
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use crossbeam_channel::{after, never, Receiver};
 use std::time::Instant;
+use common::data_structures::call_request::CallRequest;
 use common::data_structures::controller_state::ControllerState;
 use common::data_structures::controller_state::ControllerState::{Backup, Master, MasterSteppingDown};
 use common::data_structures::full_requests_matrix::FullControllerRequestsMatrix;
@@ -100,6 +101,20 @@ impl ControllerSync {
                 ),
             Message::ControllerSyncFinish => self.handle_state_finish(controller_handle),
 
+            Message::ControllerAddRequestSync { elevator_id, pressed } =>
+                self.handle_add_request_sync(
+                    elevator_pool,
+                    elevator_id,
+                    pressed
+                ),
+
+            Message::ControllerRemoveRequestSync { elevator_id, pressed } =>
+                self.handle_remove_request_sync(
+                    elevator_pool,
+                    elevator_id,
+                    pressed
+                ),
+
             _ => {}
         }
     }
@@ -183,6 +198,58 @@ impl ControllerSync {
             // Do nothing and wait for the other controller to step up again.
             (Backup, MasterSteppingDown) => {}
 
+        }
+    }
+
+    fn handle_add_request_sync(
+        &mut self,
+        elevator_pool: &mut ElevatorPool,
+        elevator_id: ConnectionIdentifier,
+        pressed: CallRequest
+    ) {
+        match self.controller_state {
+            Backup => {
+                match pressed {
+                    CallRequest::Hall { .. } => {
+                        elevator_pool.pool[0]
+                            .add_request(pressed);
+                    }
+                    CallRequest::Cab { .. } => {
+                        elevator_pool.get_elevator_mut(elevator_id)
+                            .add_request(pressed);
+                    }
+                }
+            }
+            // Stepping down state shouldn't be synced again.
+            MasterSteppingDown => {}
+            // Master state cannot be synced over.
+            Master => {}
+        }
+    }
+
+    fn handle_remove_request_sync(
+        &mut self,
+        elevator_pool: &mut ElevatorPool,
+        elevator_id: ConnectionIdentifier,
+        pressed: CallRequest
+    ) {
+        match self.controller_state {
+            Backup => {
+                match pressed {
+                    CallRequest::Hall { .. } => {
+                        elevator_pool.pool[0]
+                            .remove_request(pressed);
+                    }
+                    CallRequest::Cab { .. } => {
+                        elevator_pool.get_elevator_mut(elevator_id)
+                            .remove_request(pressed);
+                    }
+                }
+            }
+            // Stepping down state shouldn't be synced again.
+            MasterSteppingDown => {}
+            // Master state cannot be synced over.
+            Master => {}
         }
     }
 

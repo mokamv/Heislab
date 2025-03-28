@@ -9,7 +9,7 @@ use crate::data_structures::call_request::CallRequest;
 use crate::data_structures::call_request::CallRequest::{Cab, Hall};
 use crate::data_structures::controller_state::ControllerState;
 use crate::data_structures::full_requests_matrix::{FullControllerRequestsMatrix, FCRM_RAW_SIZE};
-use crate::data_structures::network::message::Message::{KeepAlive, Ack, Connected, Disconnected, ClientButtonCall, ClientCabinState, ClientObstructed, ClientStopButton, ClientSyncCab, ControllerAddress, ControllerSyncMerge, ControllerSyncReplace, ControllerSyncState, FullCallLightControl, GotoFloor, LightControl, ControllerSyncFinish, ClientMotorLocked};
+use crate::data_structures::network::message::Message::{KeepAlive, Ack, Connected, Disconnected, ClientButtonCall, ClientCabinState, ClientObstructed, ClientStopButton, ClientSyncCab, ControllerAddress, ControllerSyncMerge, ControllerSyncReplace, ControllerSyncState, FullCallLightControl, GotoFloor, LightControl, ControllerSyncFinish, ClientMotorLocked, ControllerAddRequestSync, ControllerRemoveRequestSync};
 
 pub const RAW_MESSAGE_SIZE: usize = 32;
 pub type RawMessage = [u8; RAW_MESSAGE_SIZE];
@@ -67,6 +67,8 @@ pub enum Message {
     ControllerSyncReplace { full_matrix: FullControllerRequestsMatrix },
     ControllerSyncMerge { full_matrix: FullControllerRequestsMatrix },
     ControllerSyncFinish,
+    ControllerAddRequestSync { elevator_id: ConnectionIdentifier, pressed: CallRequest },
+    ControllerRemoveRequestSync { elevator_id: ConnectionIdentifier, pressed: CallRequest },
     
     //TODO SYNC ADD & CLEAR REQ
 }
@@ -171,6 +173,16 @@ impl Message {
             ControllerSyncFinish => {
                 raw_message[0] = 196
             }
+            ControllerAddRequestSync { elevator_id, pressed } => {
+                raw_message[0] = 197;
+                raw_message[1] = elevator_id;
+                raw_message[2..5].copy_from_slice(&pressed.encode());
+            },
+            ControllerRemoveRequestSync { elevator_id, pressed } => {
+                raw_message[0] = 198;
+                raw_message[1] = elevator_id;
+                raw_message[2..5].copy_from_slice(&pressed.encode());
+            },
         }
 
         raw_message
@@ -240,6 +252,14 @@ impl Message {
                 ControllerSyncMerge { full_matrix }
             },
             196 => ControllerSyncFinish,
+            197 => ControllerAddRequestSync {
+                elevator_id: raw_message[1],
+                pressed: CallRequest::decode(&raw_message[2..5])
+            },
+            198 => ControllerRemoveRequestSync {
+                elevator_id: raw_message[1],
+                pressed: CallRequest::decode(&raw_message[2..5])
+            },
 
             code => {
                 eprintln!("Bad message code received: {code}");

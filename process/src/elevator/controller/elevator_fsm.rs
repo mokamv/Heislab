@@ -188,6 +188,21 @@ impl ElevatorState {
         }
     }
 
+    pub fn remove_request(&mut self, request: CallRequest) {
+        match request {
+            CallRequest::Hall { floor, direction } => {
+                match direction {
+                    MotorDirection::Up => self.request_matrix[floor as usize][HALL_UP_IDX] = false,
+                    MotorDirection::Down => self.request_matrix[floor as usize][HALL_DOWN_IDX] = false,
+                    MotorDirection::Stop => unreachable!()
+                }
+            }
+            CallRequest::Cab { floor } => {
+                self.request_matrix[floor as usize][CAB_IDX] = false;
+            }
+        }
+    }
+
     pub fn on_door_open_clear_cab_request(&mut self) {
         debug_assert!(self.state.is_door_open());
         self.request_matrix[self.state.get_last_seen_floor() as usize][CAB_IDX] = false;

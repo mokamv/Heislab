@@ -10,6 +10,7 @@ use common::data_structures::call_request::CallRequest;
 use common::data_structures::full_requests_matrix::FullControllerRequestsMatrix;
 use common::data_structures::network::message::Message;
 use std::ops::BitOrAssign;
+use common::data_structures::network::message::Message::ControllerAddRequestSync;
 
 pub struct ElevatorPool {
     pub(super) pool: [ElevatorState; CLIENT_COUNT as usize]
@@ -31,7 +32,7 @@ impl ElevatorPool {
         }
     }
 
-    fn get_elevator_mut(&mut self, elevator_id: ConnectionIdentifier) -> &mut ElevatorState {
+    pub(super) fn get_elevator_mut(&mut self, elevator_id: ConnectionIdentifier) -> &mut ElevatorState {
         self.pool.iter_mut().find(|candidate| candidate.get_elevator_identifier() == elevator_id).unwrap()
     }
 
@@ -56,7 +57,12 @@ impl ElevatorPool {
             ),
 
             Message::ClientButtonCall { pressed: request } => {
-                // TODO SEND TO CONTROLLER_SYNC FOR SYNC PUPROSE
+                controller_handle.send_sync_message(
+                    ControllerAddRequestSync {
+                        elevator_id,
+                        pressed: request
+                    }
+                );
                 elevator.add_request(request);
 
                 let _ = execute_hall_request_assigner(self).unwrap();
@@ -220,7 +226,23 @@ impl ElevatorPool {
                 let cleared_requests =
                     elevator.on_door_open_clear_relevant_hall_requests();
 
-                // Update lights as well.
+                // Synchronize with the backup
+                controller_handle.send_sync_message(
+                    Message::ControllerRemoveRequestSync {
+                        elevator_id,
+                        pressed: CallRequest::Cab { floor: current_floor },
+                    }
+                );
+                for cleared_request in &cleared_requests {
+                    controller_handle.send_sync_message(
+                        Message::ControllerRemoveRequestSync {
+                            elevator_id,
+                            pressed: *cleared_request,
+                        }
+                    );
+                }
+
+                // Update lights as well on the clients.
                 for cleared_request in cleared_requests {
                     controller_handle.send_client_message(
                         Target::All,

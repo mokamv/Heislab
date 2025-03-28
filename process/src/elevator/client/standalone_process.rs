@@ -103,7 +103,6 @@ impl StandaloneProcessState {
                 self.emergency_blinking = (false, tick(EMERGENCY_BLINKING_PERIOD));
                 self.elevator.set_hall_lights_state(false);
                 self.elevator.offline_handle_next_cab_call();
-                // TODO CHANGE OPERATING MODE
                 println!("Disconnected from server, starting offline mode");
             }
 
