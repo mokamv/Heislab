@@ -87,18 +87,25 @@ impl ElevatorHardwareState {
         }
     }
 
+    /// used when resiving cab call in offline mode
+    /// set target to the closest call in motordirection
+    ///  stops elevator if no cab calls
     pub fn find_closest_call(&mut self, last_floor: u8, to_floor: Option<u8>) {
         let motor_direction = self.state.cabin.get_direction();
         println!("Last floor: {}", last_floor);
         println!("Last direction:{:?}", self.state.last_direction);
 
+        //iterating called floors in the cab_called vector
         let next_call: Option<(u8, u8)> = self.state
             .cab_called
             .iter()
             .enumerate()
             .filter_map(|(index, is_called)| {
+
                 let target_floor = index as u8;
                 let target_direction = self.state.cabin.get_direction_relative_to(target_floor);
+                
+                //for each floor calculating the distance to the target
                 if *is_called &&
                     ((motor_direction == MotorDirection::Up && target_floor > last_floor) ||
                     (motor_direction == MotorDirection::Down && target_floor < last_floor) ||
@@ -106,57 +113,18 @@ impl ElevatorHardwareState {
                 {   
                     if target_floor == last_floor {
                         Some((target_floor, 0))
-                    }else {
-                        if target_direction != self.state.last_direction {
-                            Some((target_floor, u8::abs_diff(last_floor, target_floor) + N_FLOOR))
-                        } else {
-                            Some((target_floor, u8::abs_diff(last_floor, target_floor)))
-                        }
+                    } else if target_direction != self.state.last_direction {
+                        //setting low priority to call not in motordirection by adding N_FLOOR to the distace
+                        Some((target_floor, u8::abs_diff(last_floor, target_floor) + N_FLOOR))
+                    } else {
+                        Some((target_floor, u8::abs_diff(last_floor, target_floor)))
                     }
-                    
-                    
-                    
                 } else {
                     None
                 }
-
             })
+            //setting the next call to the target with the shortest distance
             .min_by(|(_, d1), (_, d2)| {d1.cmp(d2)});
-
-            
-
-        // let next_call: Option<(u8, u8)> = self.state
-        //     .cab_called
-        //     .iter()
-        //     .enumerate()
-        //     .filter_map(|(index, is_called)| {
-        //         let target_floor = index as u8;
-        //         if *is_called{
-        //             match motor_direction {
-        //                 MotorDirection::Up if target_floor > last_floor => {
-        //                     Some((target_floor, u8::abs_diff(last_floor, target_floor)))
-        //                 },
-        //                 MotorDirection::Down if target_floor < last_floor => {
-        //                     Some((target_floor, u8::abs_diff(last_floor, target_floor)))
-        //                 },
-        //                 MotorDirection::Stop => {
-        //                     match last_motordirection => {
-        //                         MotorDirection::Up if target_floor > last_floor => {
-        //                             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
-        //                         },
-        //                         MotorDirection::Down if target_floor < last_floor => {
-        //                             Some((target_floor, u8::abs_diff(last_floor, target_floor)))
-        //                         },
-        //                         _ => None //OBS: crash????
-        //                     }
-        //                 }
-        //             }
-        //         } else {
-        //             None
-        //         }
-
-        //     })
-        //     .min_by(|(_, d1), (_, d2)| {d1.cmp(d2)});
             
         println!("NEXT_CALL: {next_call:?}");
 
