@@ -30,7 +30,6 @@ impl Default for CabinState { // is this used?
 }
 
 impl CabinState {
-    // TODO MIGHT REMOVE
     /// Returns true if the cabin state is currently [DoorOpen], false otherwise.
     /// This can be used to avoid pattern-matching when not required
     pub fn is_door_open(&self) -> bool {
@@ -43,6 +42,14 @@ impl CabinState {
     /// This can be used to avoid pattern-matching when not required
     pub fn is_init(&self) -> bool {
         if let Init = *self {
+            true
+        } else { false }
+    }
+
+    /// Returns true if the cabin state is currently [Between], false otherwise.
+    /// This can be used to avoid pattern-matching when not required
+    pub fn is_between(&self) -> bool {
+        if let Between { .. } = *self {
             true
         } else { false }
     }

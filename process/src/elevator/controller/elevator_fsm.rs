@@ -28,19 +28,19 @@ impl ElevatorState {
             return;
         }
 
-        let next_floor = next_floor.unwrap();
-        let current_floor = self.state.get_last_seen_floor();
-        
-        // Update current_direction based on next floor
-        if next_floor > current_floor {
-            self.last_direction = MotorDirection::Up;
-        } else if next_floor < current_floor {
-            self.last_direction = MotorDirection::Down;
-        }
+        // let next_floor = next_floor.unwrap();
+        // let current_floor = self.state.get_last_seen_floor();
+        //
+        // // Update current_direction based on next floor
+        // if next_floor > current_floor {
+        //     self.last_direction = MotorDirection::Up;
+        // } else if next_floor < current_floor {
+        //     self.last_direction = MotorDirection::Down;
+        // }
 
         controller_handle.send_client_message(
             Target::Specific(self.identifier),
-            Message::GotoFloor { go_to_floor: next_floor }
+            Message::GotoFloor { go_to_floor: next_floor.unwrap() }
         );
 
     }
@@ -71,11 +71,8 @@ impl ElevatorState {
 
 impl ElevatorState {
     // Request functions:
-    pub fn requests_above(&self, floor: u8) -> bool {
-        if floor >= N_FLOOR  - 1{
-            return false;
-        }
-
+    pub fn requests_above(&self) -> bool {
+        let floor = self.state.get_last_seen_floor();
         for f in floor + 1..N_FLOOR {
             for btn in 0..N_BUTTONS {
                 if self.request_matrix[f as usize][btn] {
@@ -86,11 +83,8 @@ impl ElevatorState {
         false
     }
 
-    pub fn requests_below(&self, floor: u8) -> bool {
-        if floor == 0 {
-            return false;
-        }
-
+    pub fn requests_below(&self) -> bool {
+        let floor = self.state.get_last_seen_floor();
         for f in 0..floor as usize {
             for btn in 0..N_BUTTONS {
                 if self.request_matrix[f][btn] {
@@ -101,7 +95,8 @@ impl ElevatorState {
         false
     }
 
-    pub fn requests_at_current_floor(&self, floor: u8) -> bool {
+    pub fn requests_at_current_floor(&self) -> bool {
+        let floor = self.state.get_last_seen_floor();
         for btn in 0..N_BUTTONS {
             if self.request_matrix[floor as usize][btn] {
                 return true;
@@ -110,30 +105,38 @@ impl ElevatorState {
         false
     }
 
-    pub fn choose_direction(&self , current_floor: u8, direction: MotorDirection) -> MotorDirection { //TODO: Check if correct
-        match direction {
+    pub fn choose_direction(
+        &self,
+    ) -> MotorDirection { //TODO: Check if correct
+        match self.last_direction {
             MotorDirection::Up => {
-                if self.requests_above(current_floor) {
-                    MotorDirection::Up }
-                else if self.requests_below(current_floor) {
+                if self.requests_above() {
+                    MotorDirection::Up
+                } else if self.requests_at_current_floor() {
+                    MotorDirection::Down
+                } else if self.requests_below() {
                     MotorDirection::Down
                 } else {
                     MotorDirection::Stop
                 }
             }
             MotorDirection::Down => {
-                if self.requests_below(current_floor) {
+                if self.requests_below() {
                     MotorDirection::Down
-                } else if self.requests_above(current_floor) {
+                } else if self.requests_at_current_floor() {
+                    MotorDirection::Up
+                } else if self.requests_above() {
                     MotorDirection::Up
                 } else {
                     MotorDirection::Stop
                 }
             }
             MotorDirection::Stop => {
-                if self.requests_above(current_floor) {
+                if self.requests_at_current_floor() {
+                    MotorDirection::Stop
+                } else if self.requests_above() {
                     MotorDirection::Up
-                } else if self.requests_below(current_floor) {
+                } else if self.requests_below() {
                     MotorDirection::Down
                 } else {
                     MotorDirection::Stop
@@ -142,37 +145,85 @@ impl ElevatorState {
         }
     }
 
-    pub fn check_should_stop(&self) -> bool {
-        let current_floor = self.state.get_last_seen_floor();
+    pub fn choose_nearest_respecting_direction(&self) -> Option<u8> {
+        let is_between_floor = self.state.is_between();
+        let floor = self.state.get_last_seen_floor();
         let direction = self.last_direction;
 
-        if self.request_matrix[current_floor as usize][CAB_IDX] {
-            return true;
-        }
-
         match direction {
-            MotorDirection::Up => {
-                return {
-                    self.request_matrix[current_floor as usize][HALL_UP_IDX] || // Hall up
-                    self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
-                    !self.requests_above(current_floor)
+            // When direction is stop, i.e. not going to move
+            MotorDirection::Stop => {
+                // It can mean that there are only calls on current floor
+                if self.requests_at_current_floor() {
+                    Some(floor)
+                }
+                // Or that there are no more calls
+                else {
+                    None
                 }
             }
+            // When direction is down
             MotorDirection::Down => {
-                return {
-                    self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || // Hall down
-                    self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
-                    !self.requests_below(current_floor)
+                let floor = if is_between_floor { floor - 1 } else { floor };
+                let mut consider = None;
+                for f in (0..floor).rev() {
+                    if self.request_matrix[f as usize][HALL_DOWN_IDX]
+                        || self.request_matrix[f as usize][CAB_IDX] {
+                        return Some(f);
+                    } else if self.request_matrix[f as usize][HALL_UP_IDX] {
+                        consider = Some(f);
+                    }
                 }
+                consider
             }
-            MotorDirection::Stop => {}
+            // When direction is up
+            MotorDirection::Up => {
+                let floor = if is_between_floor { floor + 1 } else { floor };
+                let mut consider = None;
+                for f in floor..N_FLOOR {
+                    if self.request_matrix[f as usize][HALL_UP_IDX]
+                        || self.request_matrix[f as usize][CAB_IDX] {
+                        return Some(f);
+                    } else if self.request_matrix[f as usize][HALL_DOWN_IDX] {
+                        consider = Some(f);
+                    }
+                }
+                consider
+            }
         }
-        true
     }
 
-    pub fn check_should_clear_request_immediately(&self, floor: u8, request: CallRequest) -> bool {
-        self.request_matrix[floor as usize][CAB_IDX]
-    }
+    // pub fn check_should_stop(&self) -> bool {
+    //     let current_floor = self.state.get_last_seen_floor();
+    //     let direction = self.last_direction;
+    //
+    //     if self.request_matrix[current_floor as usize][CAB_IDX] {
+    //         return true;
+    //     }
+    //
+    //     match direction {
+    //         MotorDirection::Up => {
+    //             return {
+    //                 self.request_matrix[current_floor as usize][HALL_UP_IDX] || // Hall up
+    //                 self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
+    //                 !self.requests_above(current_floor)
+    //             }
+    //         }
+    //         MotorDirection::Down => {
+    //             return {
+    //                 self.request_matrix[current_floor as usize][HALL_DOWN_IDX] || // Hall down
+    //                 self.request_matrix[current_floor as usize][CAB_IDX] || // Cab
+    //                 !self.requests_below(current_floor)
+    //             }
+    //         }
+    //         MotorDirection::Stop => {}
+    //     }
+    //     true
+    // }
+
+    // pub fn check_should_clear_request_immediately(&self, floor: u8, request: CallRequest) -> bool {
+    //     self.request_matrix[floor as usize][CAB_IDX]
+    // }
 
 }
 
@@ -198,16 +249,16 @@ impl ElevatorState {
 
     pub fn set_state(&mut self, state: CabinState) {
         // Store direction before going idle
-        if matches!(state, CabinState::Idle { .. }) {
-            // Keep the current_direction as is - it will be used to determine
-            // which direction to resume when new requests arrive
-        }
-        else {
-            self.last_direction = match state {
-                CabinState::Between { .. } => state.get_direction(),
-                _ => self.last_direction
-            };
-        };
+        // if matches!(state, CabinState::Idle { .. }) {
+        //     // Keep the current_direction as is - it will be used to determine
+        //     // which direction to resume when new requests arrive
+        // }
+        // else {
+        //     self.last_direction = match state {
+        //         CabinState::Between { .. } => state.get_direction(),
+        //         _ => self.last_direction
+        //     };
+        // };
         
         self.state = state;
     }
@@ -247,17 +298,57 @@ impl ElevatorState {
         }
     }
 
-    // Clear hall requests at a specific floor, and specific direction
-    pub fn clear_relevant_hall_requests_at_floor(&mut self, floor: u8, direction: MotorDirection) {
-        match direction {
-            MotorDirection::Up => self.request_matrix[floor as usize][HALL_UP_IDX] = false,
-            MotorDirection::Down => self.request_matrix[floor as usize][HALL_DOWN_IDX] = false,
-            MotorDirection::Stop => unreachable!()
-        }
+    pub fn on_door_open_clear_cab_request(&mut self) {
+        debug_assert!(self.state.is_door_open());
+        self.request_matrix[self.state.get_last_seen_floor() as usize][CAB_IDX] = false;
     }
 
-    pub fn clear_cab_requests_at_floor(&mut self, floor: u8) {
-        self.request_matrix[floor as usize][CAB_IDX] = false;
+    /// Called when an elevator reach the state [DoorOpen][CabinState::DoorOpen]
+    /// Clear the relevant hall requests if possible and return the associated [CallRequest]
+    /// The return value can be used to clear lights for example.
+    pub fn on_door_open_clear_relevant_hall_requests(&mut self) -> Vec<CallRequest> {
+        debug_assert!(self.state.is_door_open());
+        let floor = self.state.get_last_seen_floor();
+
+        let mut cleared = vec![];
+
+        match self.last_direction {
+            MotorDirection::Stop => {
+                let request_up = &mut self.request_matrix[floor as usize][HALL_UP_IDX];
+                if *request_up {
+                    *request_up = false;
+                    cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Up });
+                }
+
+                let request_down = &mut self.request_matrix[floor as usize][HALL_DOWN_IDX];
+                if *request_down {
+                    *request_down = false;
+                    cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Down });
+                }
+            }
+
+            MotorDirection::Down => {
+                if ! self.requests_below() && !self.request_matrix[floor as usize][HALL_DOWN_IDX] {
+                    self.request_matrix[floor as usize][HALL_UP_IDX] = false;
+                    cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Up });
+                } else if self.request_matrix[floor as usize][HALL_DOWN_IDX] {
+                    self.request_matrix[floor as usize][HALL_DOWN_IDX] = false;
+                    cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Down });
+                }
+            },
+
+            MotorDirection::Up => {
+                if ! self.requests_above() && !self.request_matrix[floor as usize][HALL_UP_IDX] {
+                    self.request_matrix[floor as usize][HALL_DOWN_IDX] = false;
+                    cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Down });
+                } else if self.request_matrix[floor as usize][HALL_UP_IDX] {
+                    self.request_matrix[floor as usize][HALL_UP_IDX] = false;
+                    cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Up });
+                }
+            }
+        }
+
+        cleared
     }
 
     // Clear hall requests
@@ -323,63 +414,60 @@ impl ElevatorState {
         self.request_matrix = request_matrix;
     }
 
-    pub fn get_next_command(&self) -> Option<u8> {
-        // If elevator is in init state, between floors or door is open, return None
+    pub fn get_next_command(&mut self) -> Option<u8> {
         if self.state.is_init() || self.state.is_door_open() {
             return None;
         }
-
-        if self.state.is_door_open() {
-            return None;
-        }
-
         // Get current floor
-        let current_floor = self.state.get_last_seen_floor();
+        // let current_floor = self.state.get_last_seen_floor();
 
-        if self.request_matrix[current_floor as usize][2] {
-            return Some(current_floor);
-        }
+        println!("Current state: {:?}", self.state);
+        println!("Current matrix: {:?}", self.get_request_matrix());
 
+        println!("Current direction: {:?}", self.last_direction);
+        self.last_direction = self.choose_direction();
+        println!("New direction: {:?}", self.last_direction);
+        self.choose_nearest_respecting_direction()
 
-        match self.last_direction {
-            MotorDirection::Stop => None, // No requests
-
-            MotorDirection::Up => {
-                // Check for requests above current floor
-                for floor in current_floor + 1..N_FLOOR as u8 {
-                    if self.requests_at_current_floor(floor) {
-                        return Some(floor);
-                    }
-                }
-                // If no requests above, check below (change direction)
-                if self.requests_below(current_floor) {
-                    for floor in (0..current_floor).rev() {
-                        if self.requests_at_current_floor(floor) {
-                            return Some(floor);
-                        }
-                    }
-                }
-                None
-            },
-
-            MotorDirection::Down => {
-                // Check for requests below current floor
-                for floor in (0..current_floor).rev() {
-                    if self.requests_at_current_floor(floor) {
-                        return Some(floor);
-                    }
-                }
-                // If no requests below, check above (change direction)
-                if self.requests_above(current_floor) {
-                    for floor in current_floor + 1..N_FLOOR as u8 {
-                        if self.requests_at_current_floor(floor) {
-                            return Some(floor);
-                        }
-                    }
-                }
-                None
-            }
-        }
+        // match self.last_direction {
+        //     MotorDirection::Up => {
+        //         // Check for requests above current floor
+        //         for floor in current_floor + 1..N_FLOOR as u8 {
+        //             if self.requests_at_current_floor(floor) {
+        //                 return Some(floor);
+        //             }
+        //         }
+        //         // If no requests above, check below (change direction)
+        //         if self.requests_below(current_floor) {
+        //             for floor in (0..current_floor).rev() {
+        //                 if self.requests_at_current_floor(floor) {
+        //                     return Some(floor);
+        //                 }
+        //             }
+        //         }
+        //         None
+        //     },
+        //
+        //     MotorDirection::Down => {
+        //         // Check for requests below current floor
+        //         for floor in (0..current_floor).rev() {
+        //             if self.requests_at_current_floor(floor) {
+        //                 return Some(floor);
+        //             }
+        //         }
+        //         // If no requests below, check above (change direction)
+        //         if self.requests_above() {
+        //             for floor in current_floor + 1..N_FLOOR as u8 {
+        //                 if self.requests_at_current_floor(floor) {
+        //                     return Some(floor);
+        //                 }
+        //             }
+        //         }
+        //         None
+        //     }
+        //
+        //     MotorDirection::Stop => None, // No requests
+        // }
     }
 
     //  TODO: Check if correct

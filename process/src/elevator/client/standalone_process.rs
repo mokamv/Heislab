@@ -92,8 +92,8 @@ impl StandaloneProcessState {
             }
 
             Message::GotoFloor { go_to_floor } => {
-                // let new_state = self.elevator.set_new_target(go_to_floor);
-                // self.send_cabin_state_to_controller(new_state);
+                let new_state = self.elevator.set_new_target(go_to_floor);
+                self.send_cabin_state_to_controller(new_state);
             },
 
             Message::LightControl { button: target, is_lit } => {

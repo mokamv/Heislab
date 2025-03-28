@@ -4,13 +4,12 @@ use crate::elevator::controller::requests_assigner::execute_hall_request_assigne
 use common::config::{CLIENT_COUNT, N_FLOOR};
 use common::connection::event_handle::controller_handle::controller_handle::{ControllerHandle, Target};
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
-use driver_rust::elevio::elev::MotorDirection;
-use std::ops::BitOrAssign;
 use common::data_structures::cabin_state::CabinState;
 use common::data_structures::call_light_array::CallLightArray;
 use common::data_structures::call_request::CallRequest;
 use common::data_structures::full_requests_matrix::FullControllerRequestsMatrix;
 use common::data_structures::network::message::Message;
+use std::ops::BitOrAssign;
 
 pub struct ElevatorPool {
     pub(super) pool: [ElevatorState; CLIENT_COUNT as usize]
@@ -149,50 +148,51 @@ impl ElevatorPool {
                 // If door is open, and there are hall_requests there on their way up or down, we
                 // also have to clear the request and turn off the light accordingly
 
-                let last_direction = elevator.get_last_direction();
-                let next_command = elevator.get_next_command();
+                // Clear all relevant call requests
+                elevator.on_door_open_clear_cab_request();
+                let cleared_requests =
+                    elevator.on_door_open_clear_relevant_hall_requests();
 
-                elevator.clear_cab_requests_at_floor(current_floor);
-
-                //TODO: Light test
-
-                // controller_handle.send_client_message(
-                //     Target::Specific(elevator_id),
-                //     Message::LightControl {
-                //         button: CallRequest::Cab { floor: current_floor },
-                //         is_lit: false
-                //     }
-                // );
-
-                match last_direction {
-                    MotorDirection::Up => {
-                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
-                        controller_handle.send_client_message(
-                            Target::All,
-                            Message::LightControl {
-                                button: CallRequest::Hall {
-                                    floor: current_floor,
-                                    direction: MotorDirection::Up
-                                },
-                                is_lit: false
-                            }
-                        );
-                    }
-                    MotorDirection::Down => {
-                        elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
-                        controller_handle.send_client_message(
-                            Target::All,
-                            Message::LightControl {
-                                button: CallRequest::Hall {
-                                    floor: current_floor,
-                                    direction: MotorDirection::Down
-                                },
-                                is_lit: false
-                            }
-                        );
-                    }
-                    MotorDirection::Stop => {}
+                // Update lights as well.
+                for cleared_request in cleared_requests {
+                    controller_handle.send_client_message(
+                        Target::All,
+                        Message::LightControl {
+                            button: cleared_request,
+                            is_lit: false
+                        }
+                    );
                 }
+
+                // match last_direction {
+                //     MotorDirection::Up => {
+                //         elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
+                //         controller_handle.send_client_message(
+                //             Target::All,
+                //             Message::LightControl {
+                //                 button: CallRequest::Hall {
+                //                     floor: current_floor,
+                //                     direction: MotorDirection::Up
+                //                 },
+                //                 is_lit: false
+                //             }
+                //         );
+                //     }
+                //     MotorDirection::Down => {
+                //         elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
+                //         controller_handle.send_client_message(
+                //             Target::All,
+                //             Message::LightControl {
+                //                 button: CallRequest::Hall {
+                //                     floor: current_floor,
+                //                     direction: MotorDirection::Down
+                //                 },
+                //                 is_lit: false
+                //             }
+                //         );
+                //     }
+                //     MotorDirection::Stop => {}
+                // }
             }
             _ => {}
         }
