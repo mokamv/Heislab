@@ -190,6 +190,10 @@ impl ElevatorHardwareState {
     pub fn get_current_cabin_state(&self) -> CabinState {
         self.state.cabin
     }
+
+    pub fn get_obstruction(&self) -> bool {
+        self.door_control.is_obstructed()
+    }
 }
 
 impl ElevatorHardwareState {

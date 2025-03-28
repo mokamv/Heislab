@@ -148,7 +148,13 @@ impl StandaloneProcessState {
 
     fn handle_synchronisation(&mut self) {
         let current_state = self.elevator.get_current_cabin_state();
+        let is_obstructed = self.elevator.get_obstruction();
         self.send_cabin_state_to_controller(current_state);
+        self.handle.send_message_to_controller(
+            Message::ClientObstructed {
+                is_obstructed,
+            }
+        );
         self.handle.send_message_to_controller(
             Message::ClientSyncCab {
                 cab_pressed: self.elevator.get_cab_pressed(),

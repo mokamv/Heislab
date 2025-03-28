@@ -1,5 +1,6 @@
 use crate::data_structures::controller_state::ControllerState::{Backup, Master, MasterSteppingDown};
 
+/// TODO
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ControllerState {
     /// Currently acting as backup, receiving controller_link message from the current master

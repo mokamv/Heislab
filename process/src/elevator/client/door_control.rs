@@ -62,6 +62,10 @@ impl DoorControl {
     pub(in super) fn update_obstruction(&self, obstructed: bool) {
         self.is_obstructed.store(obstructed, Relaxed);
     }
+
+    pub(in super) fn is_obstructed(&self) -> bool {
+        self.is_obstructed.load(Relaxed)
+    }
 }
 
 // #[cfg(test)]

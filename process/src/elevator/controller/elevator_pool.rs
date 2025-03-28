@@ -32,11 +32,11 @@ impl ElevatorPool {
     }
 
     pub(super) fn get_elevator_mut(&mut self, elevator_id: ConnectionIdentifier) -> &mut ElevatorState {
-        self.pool.iter_mut().find(|candidate| candidate.identifier() == elevator_id).unwrap()
+        self.pool.iter_mut().find(|candidate| candidate.get_elevator_identifier() == elevator_id).unwrap()
     }
 
     fn get_elevator(&self, elevator_id: ConnectionIdentifier) -> &ElevatorState {
-        self.pool.iter().find(|candidate| candidate.identifier() == elevator_id).unwrap()
+        self.pool.iter().find(|candidate| candidate.get_elevator_identifier() == elevator_id).unwrap()
     }
 
     pub(super) fn handle_elevator_message(
@@ -76,12 +76,18 @@ impl ElevatorPool {
                 };
 
                 for elevator in self.pool.iter_mut() {
-                    elevator.fsm_on_request_button_press(controller_handle);
+                    let next_floor = elevator.get_next_command();
+                    if let Some(next_floor) = next_floor {
+                        controller_handle.send_client_message(
+                            Target::Specific(elevator.get_elevator_identifier()),
+                            Message::GotoFloor { go_to_floor: next_floor }
+                        );
+                    }
                 }
             }
 
             Message::ClientObstructed { is_obstructed } =>
-                self.handle_obstruction(is_obstructed),
+                self.handle_obstruction(controller_handle, identifier, is_obstructed),
 
             Message::ClientCabinState { cabin_state } =>
                 self.handle_cabin_state(identifier, cabin_state, controller_handle),
@@ -120,8 +126,28 @@ impl ElevatorPool {
         }
     }
 
-    fn handle_obstruction(&mut self, is_obstructed: bool) {
-        // TODO
+    fn handle_obstruction(
+        &mut self,
+        controller_handle: &ControllerHandle,
+        elevator_id: ConnectionIdentifier,
+        is_obstructed: bool
+    ) {
+        let elevator = self.get_elevator_mut(elevator_id);
+        elevator.set_obstructed(is_obstructed);
+
+        let _ = execute_hall_request_assigner(self).unwrap();
+
+        for elevator in self.pool.iter_mut() {
+            let next_floor = elevator.get_next_command();
+            if let Some(next_floor) = next_floor {
+                controller_handle.send_client_message(
+                    Target::Specific(elevator.get_elevator_identifier()),
+                    Message::GotoFloor { go_to_floor: next_floor }
+                );
+            }
+        }
+
+        //TODO SEND TO CLIENTS?
     }
 
     fn handle_cabin_state(
@@ -163,36 +189,6 @@ impl ElevatorPool {
                         }
                     );
                 }
-
-                // match last_direction {
-                //     MotorDirection::Up => {
-                //         elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Up);
-                //         controller_handle.send_client_message(
-                //             Target::All,
-                //             Message::LightControl {
-                //                 button: CallRequest::Hall {
-                //                     floor: current_floor,
-                //                     direction: MotorDirection::Up
-                //                 },
-                //                 is_lit: false
-                //             }
-                //         );
-                //     }
-                //     MotorDirection::Down => {
-                //         elevator.clear_relevant_hall_requests_at_floor(current_floor, MotorDirection::Down);
-                //         controller_handle.send_client_message(
-                //             Target::All,
-                //             Message::LightControl {
-                //                 button: CallRequest::Hall {
-                //                     floor: current_floor,
-                //                     direction: MotorDirection::Down
-                //                 },
-                //                 is_lit: false
-                //             }
-                //         );
-                //     }
-                //     MotorDirection::Stop => {}
-                // }
             }
             _ => {}
         }

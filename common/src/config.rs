@@ -15,7 +15,7 @@ pub const VALID_CLIENT_IDS: [ConnectionIdentifier; CLIENT_COUNT as usize] =
 pub const HW_POLL_PERIOD: Duration = Duration::from_millis(25);
 
 /// Address of the Elevator Hardware (or simulator)
-pub const HW_ADDRESS: &str = "127.0.0.1:15000";
+pub const HW_ADDRESS: &str = "127.0.0.1:15001";
 
 /// Period at which the emergency light should blink while disconnected from the controller
 pub const EMERGENCY_BLINKING_PERIOD: Duration = Duration::from_millis(1000);

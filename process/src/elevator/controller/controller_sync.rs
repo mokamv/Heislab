@@ -207,7 +207,7 @@ impl ControllerSync {
                         .for_each(|elevator_state| {
                             elevator_state.replace_cab_requests(
                                 full_matrix.get_cab_requests_of(
-                                    elevator_state.identifier()
+                                    elevator_state.get_elevator_identifier()
                                 )
                             )
                         })
@@ -246,7 +246,7 @@ impl ControllerSync {
                         .for_each(|elevator_state| {
                             elevator_state.merge_cab_requests(
                                 full_matrix.get_cab_requests_of(
-                                    elevator_state.identifier()
+                                    elevator_state.get_elevator_identifier()
                                 )
                             )
                         })
