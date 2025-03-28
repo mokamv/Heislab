@@ -1,6 +1,6 @@
 use crate::elevator::controller::controller_sync::ControllerSync;
 use crate::elevator::controller::elevator_fsm::ElevatorState;
-use crate::elevator::controller::requests_assigner::execute_hall_request_assigner;
+use crate::elevator::controller::requests_assigner::{execute_hall_request_assigner, redistribute_calls};
 use common::config::{CLIENT_COUNT, N_FLOOR};
 use common::connection::event_handle::controller_handle::controller_handle::{ControllerHandle, Target};
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
@@ -31,7 +31,7 @@ impl ElevatorPool {
         }
     }
 
-    pub(super) fn get_elevator_mut(&mut self, elevator_id: ConnectionIdentifier) -> &mut ElevatorState {
+    fn get_elevator_mut(&mut self, elevator_id: ConnectionIdentifier) -> &mut ElevatorState {
         self.pool.iter_mut().find(|candidate| candidate.get_elevator_identifier() == elevator_id).unwrap()
     }
 
@@ -43,26 +43,25 @@ impl ElevatorPool {
         &mut self,
         controller_sync: &ControllerSync,
         controller_handle: &ControllerHandle,
-        identifier: ConnectionIdentifier,
+        elevator_id: ConnectionIdentifier,
         message: Message
     ) {
-        let elevator = self.get_elevator_mut(identifier);
+        let elevator = self.get_elevator_mut(elevator_id);
         match message {
-            Message::Connected => {
-                elevator.set_connected(true);
-                println!("Connected to a client");
-            }
+            Message::Connected => self.handle_connect(elevator_id),
 
-            Message::Disconnected => {
-                elevator.set_connected(false);
-                println!("Disconnected from client");
-            }
+            Message::Disconnected => self.handle_disconnect(
+                elevator_id,
+                controller_handle
+            ),
 
             Message::ClientButtonCall { pressed: request } => {
                 // TODO SEND TO CONTROLLER_SYNC FOR SYNC PUPROSE
                 elevator.add_request(request);
 
                 let _ = execute_hall_request_assigner(self).unwrap();
+
+                redistribute_calls(self, controller_handle);
 
                 // Send a message to synchronize lights on every client
                 if let CallRequest::Hall { .. } = request {
@@ -74,56 +73,49 @@ impl ElevatorPool {
                         }
                     )
                 };
-
-                for elevator in self.pool.iter_mut() {
-                    let next_floor = elevator.get_next_command();
-                    if let Some(next_floor) = next_floor {
-                        controller_handle.send_client_message(
-                            Target::Specific(elevator.get_elevator_identifier()),
-                            Message::GotoFloor { go_to_floor: next_floor }
-                        );
-                    }
-                }
             }
 
             Message::ClientObstructed { is_obstructed } =>
-                self.handle_obstruction(controller_handle, identifier, is_obstructed),
+                self.handle_obstruction(controller_handle, elevator_id, is_obstructed),
 
             Message::ClientCabinState { cabin_state } =>
-                self.handle_cabin_state(identifier, cabin_state, controller_handle),
+                self.handle_cabin_state(elevator_id, cabin_state, controller_handle),
 
             // TODO
             Message::ClientStopButton { .. } => println!("Unimplemented"),
 
             // At connection with a client, the client send it own cab calls
-            Message::ClientSyncCab { cab_pressed } => {
-                // Merge local cab calls with client cab calls
-                elevator.merge_cab_requests(cab_pressed);
-                let new_cab_requests = elevator.get_cab_requests();
-
-                // Compute requests repartition
-                let _ = execute_hall_request_assigner(self).unwrap();
-
-                // Send the merged cab calls back to the clients
-                controller_handle.send_client_message(
-                    Target::Specific(identifier),
-                    Message::ClientSyncCab {
-                        cab_pressed: new_cab_requests
-                    }
-                );
-
-                // Since the client isn't initialized, we send the lights state to the client
-                let light_array = self.get_call_lights_state_for(identifier);
-                controller_handle.send_client_message(
-                    Target::Specific(identifier),
-                    Message::FullCallLightControl {
-                        light_array: CallLightArray::from(light_array),
-                    }
-                )
-            }
+            Message::ClientSyncCab { cab_pressed } => self.handle_client_sync_cab(
+                elevator_id,
+                cab_pressed,
+                controller_handle
+            ),
 
             _ => unreachable!()
         }
+    }
+
+    fn handle_connect(
+        &mut self,
+        elevator_id: ConnectionIdentifier,
+    ) {
+        println!("Connected to client");
+        let elevator = self.get_elevator_mut(elevator_id);
+        elevator.set_connected(true);
+    }
+
+    fn handle_disconnect(
+        &mut self,
+        elevator_id: ConnectionIdentifier,
+        controller_handle: &ControllerHandle
+    ) {
+        println!("Disconnected from client");
+        let elevator = self.get_elevator_mut(elevator_id);
+        elevator.set_connected(false);
+
+        let _ = execute_hall_request_assigner(self).unwrap();
+
+        redistribute_calls(self, controller_handle);
     }
 
     fn handle_obstruction(
@@ -135,19 +127,46 @@ impl ElevatorPool {
         let elevator = self.get_elevator_mut(elevator_id);
         elevator.set_obstructed(is_obstructed);
 
+        // Compute requests repartition.
+        let _ = execute_hall_request_assigner(self).unwrap();
+        // Redistribute calls to every elevator.
+        redistribute_calls(self, controller_handle);
+    }
+
+    fn handle_client_sync_cab(
+        &mut self,
+        elevator_id: ConnectionIdentifier,
+        cab_pressed: [bool; N_FLOOR as usize],
+        controller_handle: &ControllerHandle
+    ) {
+        let elevator = self.get_elevator_mut(elevator_id);
+
+        // Merge local cab calls with client cab calls
+        elevator.merge_cab_requests(cab_pressed);
+        let new_cab_requests = elevator.get_cab_requests();
+
+        // Compute requests repartition.
         let _ = execute_hall_request_assigner(self).unwrap();
 
-        for elevator in self.pool.iter_mut() {
-            let next_floor = elevator.get_next_command();
-            if let Some(next_floor) = next_floor {
-                controller_handle.send_client_message(
-                    Target::Specific(elevator.get_elevator_identifier()),
-                    Message::GotoFloor { go_to_floor: next_floor }
-                );
-            }
-        }
+        // Redistribute calls to every elevator.
+        redistribute_calls(self, controller_handle);
 
-        //TODO SEND TO CLIENTS?
+        // Send the merged cab calls back to the clients
+        controller_handle.send_client_message(
+            Target::Specific(elevator_id),
+            Message::ClientSyncCab {
+                cab_pressed: new_cab_requests
+            }
+        );
+
+        // Since the client isn't initialized, we send the lights state to the client
+        let light_array = self.get_call_lights_state_for(elevator_id);
+        controller_handle.send_client_message(
+            Target::Specific(elevator_id),
+            Message::FullCallLightControl {
+                light_array: CallLightArray::from(light_array),
+            }
+        )
     }
 
     fn handle_cabin_state(

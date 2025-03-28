@@ -4,15 +4,19 @@ use std::str::FromStr;
 use driver_rust::elevio::elev::MotorDirection;
 use serde_json::json;
 use common::config::N_FLOOR;
+use common::connection::event_handle::controller_handle::controller_handle::{ControllerHandle, Target};
 use common::connection::event_handle::handle_state::ConnectionIdentifier;
 use common::data_structures::cabin_state::CabinState;
 use common::data_structures::call_request::CallRequest;
+use common::data_structures::network::message::Message;
 use crate::elevator::controller::elevator_pool::ElevatorPool;
 
 pub(super) fn execute_hall_request_assigner(
     elevators: &mut ElevatorPool
 ) -> Result<(), String> {
     let hall_requests: [[bool; 2]; N_FLOOR as usize] = elevators.get_merged_hall_requests();
+
+    println!("HALL REQUESTS FOR REEXEC {hall_requests:?}");
 
     let states: HashMap<String, serde_json::Value> = elevators.pool.iter()
         .filter(|elevator| {
@@ -127,4 +131,19 @@ pub(super) fn assign_updated_elevator_states(
                 }
             }
         });
+}
+
+pub(super) fn redistribute_calls(
+    elevator_pool: &mut ElevatorPool,
+    controller_handle: &ControllerHandle
+) {
+    for elevator in elevator_pool.pool.iter_mut() {
+        let next_floor = elevator.get_next_command();
+        if let Some(next_floor) = next_floor {
+            controller_handle.send_client_message(
+                Target::Specific(elevator.get_elevator_identifier()),
+                Message::GotoFloor { go_to_floor: next_floor }
+            );
+        }
+    }
 }
