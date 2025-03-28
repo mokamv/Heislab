@@ -68,20 +68,23 @@ fn extract_id(string: &str) -> ConnectionIdentifier {
     }
 }
 
-/// Start the process with the given id
+/// Start the process with the given id and the given components enabled.
 fn start_process(
     process_id: u8,
     standalone_enabled: bool,
     controller_enabled: bool
 ) {
+    // Check if at least one of the components is enabled
     assert!(
         standalone_enabled || controller_enabled,
         "The program needs to start at least one of the components."
     );
 
+    // Initialize the logger
     Logger::init_logger();
     Logger::send_once(format!("[{}][MAIN] Server has started in backup mode", process_id), LogLevel::INFO);
 
+    // Initialize the epoll receiver and the UDP socket
     let (mut epoll_receiver, udp_socket) = EpollReceiver::init();
     let bind_address = udp_socket.local_addr().unwrap();
 
@@ -89,6 +92,7 @@ fn start_process(
 
     let mut handle_pool = HandlePool::init(udp_socket);
 
+    // Start the standalone and controller threads
     let standalone_handle = if standalone_enabled {
         Some(handle_pool.with_standalone_handle(&mut epoll_receiver, process_id))
     } else { None };
@@ -110,6 +114,7 @@ fn start_process(
         )
     } else { None };
 
+    // Start the threads
     let epoll_thread = epoll_receiver.start_receiver_thread_from_builder();
     let pool_thread = handle_pool.start_handle_pool_thread();
     let standalone_thread = start_standalone_process_thread(standalone_handle);
@@ -118,10 +123,12 @@ fn start_process(
         process_id
     );
 
+    // Wait for the threads to finish
     let _ = standalone_thread.join().unwrap();
     let _ = controller_thread.join().unwrap();
     let _ = epoll_thread.join().unwrap();
     let _ = pool_thread.join().unwrap();
 
+    // Terminate the logger
     Logger::terminate_logging();
 }
