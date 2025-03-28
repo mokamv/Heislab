@@ -10,12 +10,14 @@ use common::data_structures::call_request::CallRequest;
 use common::data_structures::full_requests_matrix::FullControllerRequestsMatrix;
 use common::data_structures::network::message::Message;
 use std::ops::BitOrAssign;
+use common::constants::{CAB_IDX, HALL_DOWN_IDX, HALL_UP_IDX, N_BUTTONS, N_HALL_BUTTONS};
 
 pub struct ElevatorPool {
     pub(super) pool: [ElevatorState; CLIENT_COUNT as usize]
 }
 
 impl ElevatorPool {
+    /// Create a new instance of [ElevatorPool] from a list of [ConnectionIdentifier]
     pub fn from(client_identifiers: &[ConnectionIdentifier]) -> Self {
         let elevators = client_identifiers
             .into_iter()
@@ -39,6 +41,7 @@ impl ElevatorPool {
         self.pool.iter().find(|candidate| candidate.get_elevator_identifier() == elevator_id).unwrap()
     }
 
+    /// Handle a message from an elevator client
     pub(super) fn handle_elevator_message(
         &mut self,
         controller_sync: &ControllerSync,
@@ -47,6 +50,7 @@ impl ElevatorPool {
         message: Message
     ) {
         let elevator = self.get_elevator_mut(identifier);
+
         match message {
             Message::Connected => {
                 elevator.set_connected(true);
@@ -59,12 +63,15 @@ impl ElevatorPool {
             }
 
             Message::ClientButtonCall { pressed: request } => {
-                // TODO SEND TO CONTROLLER_SYNC FOR SYNC PUPROSE
+                // TODO SEND TO CONTROLLER_SYNC FOR SYNC PURPOSE
+
+                // Assign the request to the elevator that pressed the button
                 elevator.add_request(request);
 
+                // Reassign hall-requests between the elevators
                 let _ = execute_hall_request_assigner(self).unwrap();
 
-                // Send a message to synchronize lights on every client
+                // If the request is a hall-request, send a message to synchronize lights on every client
                 if let CallRequest::Hall { .. } = request {
                     controller_handle.send_client_message(
                         Target::All,
@@ -75,6 +82,7 @@ impl ElevatorPool {
                     )
                 };
 
+                
                 for elevator in self.pool.iter_mut() {
                     let next_floor = elevator.get_next_command();
                     if let Some(next_floor) = next_floor {
@@ -194,13 +202,13 @@ impl ElevatorPool {
         }
     }
 
-    pub(super) fn get_merged_hall_requests(&self) -> [[bool; 2]; N_FLOOR as usize] {
+    pub(super) fn get_merged_hall_requests(&self) -> [[bool; N_HALL_BUTTONS]; N_FLOOR as usize] {
         self.pool.iter()
             .filter(|elevator| !elevator.get_state().is_init())
             .map(|elevator| elevator.get_hall_requests())
-            .fold([[false; 2]; N_FLOOR as usize], |mut acc, b| {
+            .fold([[false; N_HALL_BUTTONS]; N_FLOOR as usize], |mut acc, b| {
                 for i in 0..acc.len() {
-                    for j in 0..2 {
+                    for j in 0..N_HALL_BUTTONS {
                         acc.get_mut(i).unwrap()[j].bitor_assign(b.get(i).unwrap()[j]);
                     }
                 }
@@ -241,7 +249,7 @@ impl ElevatorPool {
         )
     }
 
-    fn get_call_lights_state_for(&self, elevator_id: ConnectionIdentifier) -> [[bool; 3]; N_FLOOR as usize] {
+    fn get_call_lights_state_for(&self, elevator_id: ConnectionIdentifier) -> [[bool; N_BUTTONS]; N_FLOOR as usize] {
         let elevator = self.get_elevator(elevator_id);
         let cab_requests = elevator.get_cab_requests();
         let hall_requests = self.get_merged_hall_requests();
@@ -249,9 +257,9 @@ impl ElevatorPool {
         hall_requests.into_iter()
             .zip(cab_requests.into_iter())
             .map(|(hall_reqs, cab_req)| {
-                [hall_reqs[0], hall_reqs[1], cab_req]
+                [hall_reqs[HALL_UP_IDX], hall_reqs[HALL_DOWN_IDX], cab_req]
             })
-            .collect::<Vec<[bool; 3]>>()
+            .collect::<Vec<[bool; N_BUTTONS]>>()
             .try_into()
             .unwrap()
     }
