@@ -166,7 +166,7 @@ impl ElevatorState {
             MotorDirection::Down => {
                 let floor = if is_between_floor { floor - 1 } else { floor };
                 let mut consider = None;
-                for f in (0..floor).rev() {
+                for f in (0..=floor).rev() {
                     if self.request_matrix[f as usize][HALL_DOWN_IDX]
                         || self.request_matrix[f as usize][CAB_IDX] {
                         return Some(f);
@@ -328,20 +328,22 @@ impl ElevatorState {
             }
 
             MotorDirection::Down => {
-                if ! self.requests_below() && !self.request_matrix[floor as usize][HALL_DOWN_IDX] {
+                if ! self.requests_below() && self.request_matrix[floor as usize][HALL_UP_IDX] {
                     self.request_matrix[floor as usize][HALL_UP_IDX] = false;
                     cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Up });
-                } else if self.request_matrix[floor as usize][HALL_DOWN_IDX] {
+                }
+                if self.request_matrix[floor as usize][HALL_DOWN_IDX] {
                     self.request_matrix[floor as usize][HALL_DOWN_IDX] = false;
                     cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Down });
                 }
             },
 
             MotorDirection::Up => {
-                if ! self.requests_above() && !self.request_matrix[floor as usize][HALL_UP_IDX] {
+                if ! self.requests_above() && self.request_matrix[floor as usize][HALL_DOWN_IDX] {
                     self.request_matrix[floor as usize][HALL_DOWN_IDX] = false;
                     cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Down });
-                } else if self.request_matrix[floor as usize][HALL_UP_IDX] {
+                }
+                if self.request_matrix[floor as usize][HALL_UP_IDX] {
                     self.request_matrix[floor as usize][HALL_UP_IDX] = false;
                     cleared.push(CallRequest::Hall { floor, direction: MotorDirection::Up });
                 }
