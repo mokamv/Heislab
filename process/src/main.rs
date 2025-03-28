@@ -11,6 +11,7 @@ use process::elevator::client::standalone_process::start_standalone_process_thre
 use process::elevator::controller::controller_process::start_controller_process_thread;
 
 fn main() {
+    // Parse command line arguments
     let mut overview: bool = false;
     let mut id: Option<ConnectionIdentifier> = None;
     let mut with_controller: bool = true;
@@ -67,6 +68,7 @@ fn extract_id(string: &str) -> ConnectionIdentifier {
     }
 }
 
+/// Start the process with the given id
 fn start_process(
     process_id: u8,
     standalone_enabled: bool,

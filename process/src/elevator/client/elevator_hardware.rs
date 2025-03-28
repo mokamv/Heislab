@@ -214,6 +214,8 @@ impl ElevatorHardwareState {
         self.state.cabin
     }
 
+    /// Handle the event of the elevator reaching a floor and does not have a target floor.
+    /// The function will set the motor direction to stop and return the new state of the elevator cabin.
     fn reach_idle(&mut self, floor: u8) -> CabinState {
         self.set_motor_direction(MotorDirection::Stop);
         self.state.target = None;
@@ -221,6 +223,8 @@ impl ElevatorHardwareState {
         self.state.cabin
     }
 
+    /// Handle the event of the elevator reaching a floor that is not the target floor.
+    /// The function will increment the values inside the [Between] state and return the new state of the elevator cabin.
     fn reach_non_target_floor(&mut self) -> CabinState {
         self.state.cabin.increment_between();
         self.state.cabin
@@ -228,23 +232,26 @@ impl ElevatorHardwareState {
 }
 
 impl ElevatorHardwareState {
+    /// Handle the native event of the elevator.
     pub fn handle_native_event(&mut self, event: ElevatorEvent) -> CabinState {
         match event {
             ElevatorEvent::CallButton { floor, call } => self.handle_call_button(floor, call),
             ElevatorEvent::FloorSensor { floor } => self.handle_floor_sensor_event(floor),
             ElevatorEvent::Obstruction { obstructed } => self.handle_obstruction(obstructed),
-            ElevatorEvent::StopButton { .. } => self.state.cabin // TODO IMPLEMENT
+            ElevatorEvent::StopButton { .. } => self.state.cabin // Do nothing
         }
     }
 
     pub fn handle_closed_door_event(&mut self) -> CabinState {
         debug_assert!(self.state.cabin.is_door_open());
+        // turn of light and go to idle
         self.elevator.door_light(false);
         self.state.cabin = CabinState::Idle { current_floor: self.state.cabin.get_last_seen_floor() };
         self.state.cabin
     }
 
     fn handle_call_button(&mut self, floor: u8, call: CallType) -> CabinState {
+        // When button pressed, set the light and mark the floor as called
         if let CallType::Cab = call {
             self.elevator.call_button_light(floor, CallType::Cab, true);
             self.state.cab_called[floor as usize] = true;
