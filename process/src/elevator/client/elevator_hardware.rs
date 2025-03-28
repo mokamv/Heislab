@@ -253,6 +253,8 @@ impl ElevatorHardwareState {
         self.state.cabin
     }
 
+    /// when reaching a floor uppdating the state of the elevator and floor indicators
+    /// handling initialisation when between floors
     fn handle_floor_sensor_event(&mut self, floor: FloorEvent) -> CabinState {
         match floor {
             BetweenFloors() => {
